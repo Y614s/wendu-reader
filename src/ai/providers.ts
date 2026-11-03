@@ -1,4 +1,4 @@
-import { getSetting, setSetting } from '../db'
+import { db, getSetting, setSetting } from '../db'
 
 // 服务商预设只是方便填写：接口地址、模型名都可以改，模型名不预填。
 // 每个服务商的配置和 Key 分开保存，切换时不用重新填。Key 永远不进日志、不进备份。
@@ -56,19 +56,45 @@ export async function setSelectedProviderId(id: string): Promise<void> {
   await setSetting(KEY_SELECTED, id)
 }
 
-export async function getProviderConfig(id: string): Promise<ProviderConfig> {
+/** 设置页用的配置：不含 Key 本身，只知道有没有设置。Key 保存后在界面上只写不读。 */
+export interface ProviderSettings {
+  providerId: string
+  baseURL: string
+  model: string
+  hasKey: boolean
+}
+
+async function readKey(id: string): Promise<string> {
+  return getSetting(API_KEY_PREFIX + id, '')
+}
+
+export async function getProviderSettings(id: string): Promise<ProviderSettings> {
   const saved = await getSetting<{ baseURL?: string; model?: string } | null>(keyConfig(id), null)
   return {
     providerId: id,
     baseURL: saved?.baseURL ?? presetOf(id).baseURL,
     model: saved?.model ?? '',
-    apiKey: await getSetting(API_KEY_PREFIX + id, ''),
+    hasKey: (await readKey(id)) !== '',
   }
 }
 
-export async function saveProviderConfig(cfg: ProviderConfig): Promise<void> {
-  await setSetting(keyConfig(cfg.providerId), { baseURL: cfg.baseURL.trim(), model: cfg.model.trim() })
-  await setSetting(API_KEY_PREFIX + cfg.providerId, cfg.apiKey.trim())
+/** 发请求用的完整配置（含 Key）。只给 AI 客户端用，不要拿去显示。 */
+export async function getProviderConfig(id: string): Promise<ProviderConfig> {
+  const { providerId, baseURL, model } = await getProviderSettings(id)
+  return { providerId, baseURL, model, apiKey: await readKey(id) }
+}
+
+/** 保存接口地址和模型名，不动 Key */
+export async function saveProviderSettings(s: Pick<ProviderSettings, 'providerId' | 'baseURL' | 'model'>): Promise<void> {
+  await setSetting(keyConfig(s.providerId), { baseURL: s.baseURL.trim(), model: s.model.trim() })
+}
+
+export async function setApiKey(id: string, key: string): Promise<void> {
+  await setSetting(API_KEY_PREFIX + id, key.trim())
+}
+
+export async function deleteApiKey(id: string): Promise<void> {
+  await db.settings.delete(API_KEY_PREFIX + id)
 }
 
 /** 填了地址、模型和 Key 的服务商 */
