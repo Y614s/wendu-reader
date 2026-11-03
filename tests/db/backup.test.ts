@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WenduDB } from '../../src/db'
-import { BackupError, createBackup, parseBackup, restoreBackup, shouldRemindBackup, REMIND_AFTER_MS } from '../../src/db/backup'
+import { BackupError, clearAllData, createBackup, parseBackup, restoreBackup, shouldRemindBackup, REMIND_AFTER_MS } from '../../src/db/backup'
 
 let n = 0
 let src: WenduDB
@@ -144,6 +144,32 @@ describe('备份与恢复', () => {
       await expect(restoreBackup(dst, b, 'replace')).rejects.toThrow()
       expect(await dump(dst)).toEqual(before)
     })
+  })
+})
+
+describe('清除全部数据', () => {
+  it('文档、笔记、对话和所有设置（含 API Key）都清掉，只留诊断数据', async () => {
+    await clearAllData(src)
+    const d = await dump(src)
+    expect(d.documents).toEqual([])
+    expect(d.anchors).toEqual([])
+    expect(d.highlights).toEqual([])
+    expect(d.notes).toEqual([])
+    expect(d.conversations).toEqual([])
+    expect(d.settings).toEqual([{ key: 'diag.launchCount', value: 9 }])
+  })
+
+  it('清除后可以从备份完整恢复', async () => {
+    const text = JSON.stringify(await createBackup(src))
+    const before = await dump(src)
+    await clearAllData(src)
+    await restoreBackup(src, parseBackup(text), 'replace')
+    const after = await dump(src)
+    expect(after.documents).toEqual(before.documents)
+    expect(after.notes).toEqual(before.notes)
+    expect(after.conversations).toEqual(before.conversations)
+    // Key 不在备份里，清除后就没有了
+    expect(after.settings.some((s) => s.key.startsWith('ai.key.'))).toBe(false)
   })
 })
 

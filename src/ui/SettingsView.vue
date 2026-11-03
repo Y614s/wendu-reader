@@ -6,7 +6,7 @@ import { prefs, setContextBudget, setEdgeTap } from '../app/prefs'
 import { appState, showToast } from '../app/store'
 import { db, getSetting, setSetting } from '../db'
 import { loadCurrentDocument } from '../db/documents'
-import { BackupError, createBackup, parseBackup, restoreBackup, REMIND_AFTER_MS, type RestoreMode } from '../db/backup'
+import { BackupError, clearAllData, createBackup, parseBackup, restoreBackup, REMIND_AFTER_MS, type RestoreMode } from '../db/backup'
 import { getProviderSettings, PROVIDER_PRESETS } from '../ai/providers'
 import { saveTextFile } from '../platform/files'
 import { formatDate } from '../export/markdown'
@@ -90,6 +90,21 @@ async function onRestoreFile(e: Event) {
   }
 }
 
+async function clearAll() {
+  const backupHint = lastExportAt.value ? `上次备份是 ${fmt(lastExportAt.value)}，之后的改动会丢失。` : '你还没有导出过备份，清除后数据无法找回。'
+  if (!confirm(`清除全部数据？\n\n所有文档、划线、批注、对话和设置（包括 API Key）都会被删除。\n${backupHint}`)) return
+  if (!confirm('再确认一次：真的要清除全部数据吗？此操作无法撤销。')) return
+  busy.value = true
+  try {
+    await clearAllData(db)
+    // 重新加载，和刚安装时一样：内置测试文档会重新导入，主题等设置回到默认
+    location.reload()
+  } catch (e) {
+    busy.value = false
+    showToast(`清除失败，数据没有改动：${String(e)}`, 5000)
+  }
+}
+
 onMounted(async () => {
   lastExportAt.value = await getSetting<number | null>('backup.lastExportAt', null)
 })
@@ -136,6 +151,12 @@ onMounted(async () => {
       <input ref="restoreInput" type="file" accept=".json,application/json" hidden @change="onRestoreFile" />
       <p class="muted small">合并：同一条数据本机已有时保留本机的。替换：本机的文档和笔记全部换成备份里的，API Key 保留。</p>
       <p v-if="restoreMessage" class="result">{{ restoreMessage }}</p>
+    </section>
+
+    <section>
+      <h2>清除数据</h2>
+      <p class="muted small">删除本机所有文档、划线、批注、对话和设置（包括 API Key），相当于重新安装。无法撤销，清除前请先导出备份。</p>
+      <button class="danger" :disabled="busy" @click="clearAll">清除全部数据</button>
     </section>
   </div>
 </template>

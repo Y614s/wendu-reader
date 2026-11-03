@@ -174,6 +174,20 @@ export async function restoreBackup(db: WenduDB, backup: BackupFile, mode: Resto
   return { added, skipped }
 }
 
+// ---------- 清除全部数据 ----------
+
+/**
+ * 清除全部数据，相当于重新安装：文档、锚点、划线、批注、对话和所有设置（包括 API Key）。
+ * 只保留诊断数据（diag.*），启动计数器继续累加，方便确认是不是同一次安装。
+ */
+export async function clearAllData(db: WenduDB): Promise<void> {
+  await db.transaction('rw', [db.documents, db.anchors, db.highlights, db.notes, db.conversations, db.settings], async () => {
+    const keep = (await db.settings.toArray()).filter((s) => s.key.startsWith('diag.'))
+    await Promise.all([db.documents.clear(), db.anchors.clear(), db.highlights.clear(), db.notes.clear(), db.conversations.clear(), db.settings.clear()])
+    if (keep.length) await db.settings.bulkAdd(keep)
+  })
+}
+
 // ---------- 备份提醒 ----------
 
 export const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000
