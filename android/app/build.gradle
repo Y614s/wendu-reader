@@ -1,0 +1,83 @@
+import groovy.json.JsonSlurper
+
+apply plugin: 'com.android.application'
+
+// versionName 来自 package.json；versionCode 用 CI 的 GITHUB_RUN_NUMBER，保证每次构建递增，
+// 否则覆盖安装会被系统拒绝。本地构建没有这个变量时用 1。
+def packageJson = new JsonSlurper().parse(file('../../package.json'))
+def appVersionName = packageJson.version
+def appVersionCode = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+// 签名密钥只从环境变量读取（CI 里由 Actions Secrets 提供），密钥文件和密码绝不进仓库。
+// 变量不全时不配置签名，release 构建会产出未签名的包，而不是退回 debug 签名。
+def envKeystoreFile = System.getenv('WENDU_KEYSTORE_FILE')
+def envKeystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def envKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+def envKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+def hasReleaseSigning = envKeystoreFile && file(envKeystoreFile).exists() && envKeystorePassword && envKeyAlias && envKeyPassword
+
+android {
+    namespace = "app.wendu.reader"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "app.wendu.reader"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode appVersionCode
+        versionName appVersionName
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(envKeystoreFile)
+                storePassword envKeystorePassword
+                keyAlias envKeyAlias
+                keyPassword envKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

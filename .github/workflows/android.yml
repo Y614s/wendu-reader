@@ -1,0 +1,139 @@
+name: 测试与安卓构建
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  test:
+    name: 单元测试与网页构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test
+      - run: npm run build
+
+  android:
+    name: 构建签名 APK
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 打 v* 标签时创建 Release
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 检查签名密钥是否齐全
+        id: signing
+        env:
+          KS_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$KS_BASE64" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -z "$KS_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -z "$KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
+          [ -z "$KEY_PASSWORD" ] && missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            # 不退回 debug 签名：debug 密钥每台机器不同，会导致覆盖安装失败、用户数据丢失
+            echo "::warning title=跳过签名构建::缺少 Actions Secrets:$missing。测试已照常运行，APK 构建跳过。配置方法见 docs/setup.md。"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 标签发布必须有签名密钥
+        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ok != 'true'
+        run: |
+          echo "::error::推送了发布标签，但签名密钥不全，无法发布。见 docs/setup.md。"
+          exit 1
+
+      - uses: actions/setup-node@v5
+        if: steps.signing.outputs.ok == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        if: steps.signing.outputs.ok == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: 构建网页资源并同步到安卓工程
+        if: steps.signing.outputs.ok == 'true'
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: 还原签名密钥
+        if: steps.signing.outputs.ok == 'true'
+        env:
+          KS_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KS_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "WENDU_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Gradle 构建 release APK
+        if: steps.signing.outputs.ok == 'true'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: 校验签名并重命名
+        if: steps.signing.outputs.ok == 'true'
+        id: apk
+        run: |
+          src=android/app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$src" ]; then
+            echo "::error::没有找到签名后的 APK（$src），签名配置可能没有生效。"
+            ls -R android/app/build/outputs/apk || true
+            exit 1
+          fi
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$apksigner" verify --print-certs "$src" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+          version=$(node -p "require('./package.json').version")
+          name="wendu-reader-${version}-${GITHUB_RUN_NUMBER}.apk"
+          mv "$src" "$name"
+          rm -f "$WENDU_KEYSTORE_FILE"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "versionName=$version，versionCode=$GITHUB_RUN_NUMBER"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.signing.outputs.ok == 'true'
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.name }}
+          if-no-files-found: error
+
+      - name: 创建 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.apk.outputs.name }}" \
+            --title "问读 $GITHUB_REF_NAME" \
+            --generate-notes
