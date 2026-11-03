@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { db, newId, type ConversationRecord, type DocumentRecord, type NoteRecord } from '../db'
 import { ChatError, configProblem, streamChat, type ChatMessageInput } from '../ai/client'
 import type { ContextResult, ContextScope } from '../ai/context'
+import { historyForRequest } from '../ai/history'
 import { getProviderConfig, getSelectedProviderId, presetOf } from '../ai/providers'
 import { renderAnswer, splitAnswerBlocks } from '../reader/answer'
 import PendingItem from './PendingItem.vue'
@@ -20,7 +21,7 @@ const props = defineProps<{
   buildRequest: (question: string, scope: ContextScope, history: ChatMessageInput[]) => ContextResult
 }>()
 
-const emit = defineEmits<{ close: []; changed: []; focusInput: []; saveNote: [text: string] }>()
+const emit = defineEmits<{ close: []; changed: []; focusInput: []; saveNote: [text: string]; deleteConversation: [conv: ConversationRecord] }>()
 
 const question = ref('')
 const scope = ref<ContextScope>(props.anchorId ? 'section' : 'full')
@@ -74,9 +75,7 @@ async function ask() {
   // 接着最近一次侧栏对话问；没有就新建
   let conv = sidebarConv.value ? await db.conversations.get(sidebarConv.value.id) : undefined
   // 历史只带问题和回答本身；文档内容每次按预算重新组装
-  const history: ChatMessageInput[] = (conv?.messages ?? [])
-    .filter((m) => !m.error && m.role !== 'system')
-    .map((m) => ({ role: m.role, content: m.role === 'user' ? (m.display ?? m.content) : m.content }))
+  const history: ChatMessageInput[] = historyForRequest(conv?.messages ?? [])
   const req = props.buildRequest(q, scope.value, history)
   if (req.truncated) notice.value = scope.value === 'full' ? '全文过长，本次只发送了部分内容。' : '本节过长，本次只发送了部分内容。'
   if (req.omittedHistory > 0) notice.value += `较早的 ${req.omittedHistory} 条对话没有带上。`
@@ -157,7 +156,10 @@ onBeforeUnmount(stop)
         <div class="conv-meta">
           <span v-if="c.kind === 'external'">发到 App · {{ c.status === 'pending' ? '待补充' : c.provider }}</span>
           <span v-else>侧栏问 · {{ c.provider }}{{ c.model ? ' · ' + c.model : '' }}</span>
-          <span>{{ fmtTime(c.createdAt) }}</span>
+          <span>
+            {{ fmtTime(c.createdAt) }}
+            <button class="del-conv" :disabled="streaming && activeId === c.id" @click="emit('deleteConversation', c)">删除</button>
+          </span>
         </div>
         <template v-for="(m, i) in c.messages" :key="i">
           <div v-if="m.role === 'user'" class="msg user" :class="{ small: c.kind === 'external' }">{{ m.display ?? m.content }}</div>
@@ -227,9 +229,18 @@ onBeforeUnmount(stop)
 .conv {
   margin-bottom: 16px;
 }
+.del-conv {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 12px;
+}
 .conv-meta {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 4px;

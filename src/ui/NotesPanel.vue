@@ -15,6 +15,7 @@ const emit = defineEmits<{
   exportMd: []
   changed: []
   focusInput: []
+  deleteConversation: [conv: ConversationRecord]
 }>()
 
 const pendingEl = ref<HTMLElement | null>(null)
@@ -52,7 +53,10 @@ onMounted(async () => {
         <h4 ref="pendingEl">待补充（{{ groups.pending.length }}）</h4>
         <div v-for="p in groups.pending" :key="p.conv.id" class="item pending">
           <button v-if="p.anchorId" class="quote" @click="emit('jump', p.anchorId)">{{ p.quote || '（原文已找不到）' }}</button>
-          <div class="meta">发到 App · {{ fmt(p.conv.createdAt) }}</div>
+          <div class="meta">
+            发到 App · {{ fmt(p.conv.createdAt) }}
+            <button class="del" @click="emit('deleteConversation', p.conv)">删除这条</button>
+          </div>
           <PendingItem :id="p.conv.id" @changed="emit('changed')" @focus-input="emit('focusInput')" />
         </div>
       </template>
@@ -208,6 +212,14 @@ h4 {
 }
 .a-text :deep(p) {
   margin: 0.2em 0;
+}
+.meta .del {
+  margin-left: 8px;
+  padding: 0 6px;
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 12px;
 }
 .meta {
   font-size: 12px;

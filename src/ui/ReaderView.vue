@@ -20,7 +20,9 @@ import {
   deleteNote,
   loadAnnotations,
   locateAnchors,
-  removeHighlightsOf,
+  removeHighlightAndNotes,
+  deleteAnchorIfUnused,
+  deleteConversation,
   saveAnchor,
   updateNote,
   type LocatedAnchor,
@@ -119,13 +121,23 @@ async function refreshAnnotations() {
   repaint()
 }
 
-async function renderDoc(keepPosition: number | null) {
+/**
+ * 打开文档、代码高亮加载完后的重渲染，都排进这条队列依次执行。
+ * 两者交错时，后一个会在前一个还没恢复位置时读到顶部位置，把保存的阅读位置冲掉。
+ */
+let renderChain: Promise<void> = Promise.resolve()
+function enqueueRender(task: () => Promise<void>): Promise<void> {
+  renderChain = renderChain.then(task).catch((e) => console.warn('渲染失败', e))
+  return renderChain
+}
+
+/** 调用前先设好 restorePending：替换内容会把滚动位置清零，之后就读不到原来的位置了 */
+async function renderDoc() {
   if (!contentEl.value || !doc.value) return
   contentEl.value.innerHTML = renderMarkdown(doc.value.source, highlighter ?? undefined)
   map = paint(contentEl.value, [])
   headings.value = collectHeadings(map)
   await refreshAnnotations()
-  restorePending = keepPosition
   if (props.active) restorePosition()
 }
 
@@ -164,8 +176,9 @@ async function loadDoc(id: string | null) {
   }
   doc.value = d
   await nextTick()
+  restorePending = clampPosition(d.readingPosition, d.source.length * 2)
   if (contentEl.value) contentEl.value.scrollTop = 0
-  await renderDoc(clampPosition(d.readingPosition, d.source.length * 2))
+  await renderDoc()
 }
 
 // ---------- 阅读位置、进度、目录 ----------
@@ -292,8 +305,23 @@ function onCancel() {
 
 // ---------- 点击正文：已有划线、边缘翻页 ----------
 
+function closeOverlays() {
+  tocOpen.value = false
+  exportMenu.value = false
+}
+
+/** 点到导出菜单以外的地方时收起菜单 */
+function onDocPointerDown(e: PointerEvent) {
+  if (exportMenu.value && !(e.target as Element).closest?.('.menu-wrap')) exportMenu.value = false
+}
+
 function onContentClick(e: MouseEvent) {
   if (!map || !contentEl.value) return
+  // 目录或菜单开着时，点正文只是把它们收起来
+  if (tocOpen.value || exportMenu.value) {
+    closeOverlays()
+    return
+  }
   const sel = document.getSelection()
   if (sel && !sel.isCollapsed) return
   if ((e.target as Element).closest('a')) return
@@ -360,9 +388,49 @@ function openWholeAsk() {
   panel.value = { mode: 'ask', anchorId: null, quote: null, focus: { start: pos, end: pos } }
 }
 
+// 记住最近一次打开的提问面板：切到「笔记」再点回「提问」时回到那处原文，而不是变成整篇提问
+type AskPanelState = Extract<Panel, { mode: 'ask' }>
+const lastAsk = shallowRef<AskPanelState | null>(null)
+
+function openAskTab() {
+  if (lastAsk.value) panel.value = lastAsk.value
+  else openWholeAsk()
+}
+
+function askAnchorOf(p: Panel | null): string | null {
+  return p?.mode === 'ask' ? p.anchorId : null
+}
+
+/** 离开某处原文的提问面板时，如果什么都没留下（没提问、没划线），清掉这个锚点 */
+async function cleanupAnchor(anchorId: string) {
+  if (askAnchorOf(panel.value) === anchorId) return
+  if (await deleteAnchorIfUnused(anchorId)) {
+    if (lastAsk.value?.anchorId === anchorId) lastAsk.value = null
+    await refreshAnnotations()
+  }
+}
+
+watch(panel, (now, prev) => {
+  if (now?.mode === 'ask') lastAsk.value = now
+  const prevAnchor = askAnchorOf(prev)
+  if (prevAnchor && prevAnchor !== askAnchorOf(now)) void cleanupAnchor(prevAnchor)
+})
+
+async function onDeleteConversation(conv: ConversationRecord) {
+  const what = conv.status === 'pending' ? '这条待补充记录' : '这段对话'
+  if (!confirm(`删除${what}？删除后无法恢复。`)) return
+  await deleteConversation(conv.id)
+  await refreshAnnotations()
+  if (conv.anchorId) await cleanupAnchor(conv.anchorId)
+}
+
 async function removeTappedHighlight() {
   if (!tapped.value) return
-  for (const id of tapped.value.highlightIds) await removeHighlightsOf(id)
+  const ids = tapped.value.highlightIds
+  // 有批注或「存为笔记」的地方，划线是跟着笔记画出来的：只删划线记录的话，重画后还在
+  const noteCount = notes.value.filter((n) => ids.includes(n.anchorId)).length
+  if (noteCount && !confirm(`这处划线上有 ${noteCount} 条批注或笔记，会一起删除。确定删除？`)) return
+  for (const id of ids) await removeHighlightAndNotes(id)
   tapped.value = null
   await refreshAnnotations()
 }
@@ -452,7 +520,7 @@ async function exportNotes() {
       highlighted: highlightAnchorIds.value.has(l.anchor.id),
     })),
     // 孤立锚点只有保存时的纯文本，公式占位符换成文字说明
-    orphans: orphans.value.map((a) => ({ id: a.id, quote: a.quote.replace(/￼/g, '[公式]') })),
+    orphans: orphans.value.map((a) => ({ id: a.id, quote: a.quote.replace(/￼/g, '[公式]'), highlighted: highlightAnchorIds.value.has(a.id) })),
     notes: notes.value,
     conversations: conversations.value,
   })
@@ -528,14 +596,17 @@ async function checkBackupReminder() {
 
 watch(
   () => appState.currentDocId,
-  (id) => void loadDoc(id),
+  (id) => void enqueueRender(() => loadDoc(id)),
 )
 
 watch(
   () => props.active,
   (on) => {
     if (on) restorePosition()
-    else void savePositionNow()
+    else {
+      closeOverlays()
+      void savePositionNow()
+    }
   },
 )
 
@@ -545,6 +616,8 @@ onMounted(async () => {
   window.visualViewport?.addEventListener('scroll', onViewportChange)
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pagehide', onVisibility)
+  document.addEventListener('pointerdown', onDocPointerDown)
+  cleanups.push(() => document.removeEventListener('pointerdown', onDocPointerDown))
   cleanups.push(() => {
     window.visualViewport?.removeEventListener('resize', onViewportChange)
     window.visualViewport?.removeEventListener('scroll', onViewportChange)
@@ -552,13 +625,20 @@ onMounted(async () => {
     window.removeEventListener('pagehide', onVisibility)
   })
 
-  if (appState.currentDocId) await loadDoc(appState.currentDocId)
+  if (appState.currentDocId) void enqueueRender(() => loadDoc(appState.currentDocId))
 
   // 代码高亮异步加载，好了再按当前位置重渲染一次；锚点按文字定位，不受影响
-  highlighter = await getCodeHighlighter()
-  readerState.codeHighlight = highlighter ? 'loaded' : 'failed'
-  // 上一次的位置可能还没来得及恢复（页面隐藏、或恢复排在下一帧），这时沿用它，不要拿当前的顶部位置覆盖
-  if (highlighter && doc.value) await renderDoc(restorePending ?? currentPosition() ?? clampPosition(doc.value.readingPosition, Infinity))
+  const hl = await getCodeHighlighter()
+  readerState.codeHighlight = hl ? 'loaded' : 'failed'
+  if (hl) {
+    await enqueueRender(async () => {
+      highlighter = hl
+      if (!doc.value) return
+      // 上一次的位置可能还没来得及恢复（页面隐藏、或恢复排在下一帧），这时沿用它，不要拿当前的顶部位置覆盖
+      restorePending = restorePending ?? currentPosition() ?? clampPosition(doc.value.readingPosition, Infinity)
+      await renderDoc()
+    })
+  }
 
   void checkBackupReminder()
 })
@@ -613,7 +693,7 @@ onBeforeUnmount(() => {
     <aside v-if="panel && doc" class="side">
       <header class="panel-head">
         <div class="panel-tabs">
-          <button :class="{ on: panel.mode === 'ask' }" @click="openWholeAsk">提问</button>
+          <button :class="{ on: panel.mode === 'ask' }" @click="openAskTab">提问</button>
           <button :class="{ on: panel.mode === 'notes' }" @click="panel = { mode: 'notes', focusPending: false }">笔记</button>
         </div>
         <button class="close" @click="panel = null">关闭</button>
@@ -628,6 +708,7 @@ onBeforeUnmount(() => {
         :notes="notes"
         :build-request="buildRequest"
         @changed="refreshAnnotations"
+        @delete-conversation="onDeleteConversation"
         @focus-input="onFocusInput"
         @save-note="saveAnswerAsNote"
       />
@@ -640,6 +721,7 @@ onBeforeUnmount(() => {
         @edit-note="editNote"
         @export-md="exportNotes"
         @changed="refreshAnnotations"
+        @delete-conversation="onDeleteConversation"
         @focus-input="onFocusInput"
       />
     </aside>

@@ -15,11 +15,6 @@ export async function addHighlight(anchorId: string): Promise<HighlightRecord> {
   return hl
 }
 
-/** 删除划线只删 highlight 记录；锚点上可能还挂着对话，保留。 */
-export async function removeHighlightsOf(anchorId: string): Promise<void> {
-  await db.highlights.where('anchorId').equals(anchorId).delete()
-}
-
 export interface DocAnnotations {
   anchors: AnchorRecord[]
   highlights: HighlightRecord[]
@@ -69,4 +64,36 @@ export async function updateNote(id: string, text: string): Promise<void> {
 
 export async function deleteNote(id: string): Promise<void> {
   await db.notes.delete(id)
+}
+
+// ---------- 删除与清理 ----------
+
+/** 删除一处划线和挂在上面的批注、笔记（对话保留） */
+export async function removeHighlightAndNotes(anchorId: string): Promise<void> {
+  await db.transaction('rw', [db.highlights, db.notes], async () => {
+    await db.highlights.where('anchorId').equals(anchorId).delete()
+    await db.notes.where('anchorId').equals(anchorId).delete()
+  })
+  await deleteAnchorIfUnused(anchorId)
+}
+
+/** 删除一条对话（侧栏问或待补充记录）。锚点要不要一起清理由调用方决定，面板还开着时不能删 */
+export async function deleteConversation(id: string): Promise<void> {
+  await db.conversations.delete(id)
+}
+
+/**
+ * 锚点上已经没有划线、批注和对话时删掉它。
+ * 例如点了「侧栏问」却没提问就关掉，或删掉了最后一处划线；不清理的话，原文改动后它会变成空的孤立锚点。
+ */
+export async function deleteAnchorIfUnused(anchorId: string): Promise<boolean> {
+  return db.transaction('rw', [db.anchors, db.highlights, db.notes, db.conversations], async () => {
+    const used =
+      (await db.highlights.where('anchorId').equals(anchorId).count()) +
+      (await db.notes.where('anchorId').equals(anchorId).count()) +
+      (await db.conversations.where('anchorId').equals(anchorId).count())
+    if (used > 0) return false
+    await db.anchors.delete(anchorId)
+    return true
+  })
 }
