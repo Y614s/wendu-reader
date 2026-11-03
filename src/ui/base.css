@@ -136,6 +136,13 @@ body,
   overflow-y: hidden;
 }
 
+/* 公式整体作为一个单位选中：长按公式任意位置就选中整个公式，拖动选区经过公式时也整块带上。
+   KaTeX 把公式拆成很多小片段，不加这一条，安卓上长按只会选中其中一点。 */
+.md .katex {
+  -webkit-user-select: all;
+  user-select: all;
+}
+
 /* ---------- 划线 ---------- */
 
 /* Custom Highlight API */
