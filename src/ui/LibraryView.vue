@@ -62,10 +62,13 @@ onMounted(refresh)
       <input ref="fileInput" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden @change="onFilesPicked" />
     </div>
 
+    <!-- 确定按钮放在输入框上方：键盘弹出时会盖住下方的内容 -->
     <div v-if="pasting" class="paste">
-      <input v-model="pasteName" placeholder="名称（可选，文档里有标题时以文档为准）" />
-      <textarea v-model="pasteText" rows="8" placeholder="把 Markdown 内容粘贴到这里" />
-      <div><button class="primary" @click="importPasted">导入</button></div>
+      <div class="paste-row">
+        <input v-model="pasteName" placeholder="名称（可选，文档里有标题时以文档为准）" />
+        <button class="primary" :disabled="!pasteText.trim()" @click="importPasted">确定导入</button>
+      </div>
+      <textarea v-model="pasteText" rows="6" placeholder="把 Markdown 内容粘贴到这里" />
     </div>
 
     <p v-if="docs.length === 0" class="empty">书架是空的。导入一个 md 文件，或者从微信等 App 里选「用其他应用打开」→「问读」。</p>
@@ -114,6 +117,17 @@ button.primary {
   flex-direction: column;
   gap: 8px;
   margin: 12px 0;
+}
+.paste-row {
+  display: flex;
+  gap: 8px;
+}
+.paste-row input {
+  flex: 1;
+  min-width: 0;
+}
+button:disabled {
+  opacity: 0.5;
 }
 .paste input,
 .paste textarea {
