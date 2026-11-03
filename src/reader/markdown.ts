@@ -1,4 +1,5 @@
 import MarkdownIt, { type MarkdownIt as MarkdownItInstance } from 'markdown-it'
+import { calloutPlugin } from './callout'
 import { mathPlugin } from './math'
 
 // 渲染管线：md 原文 → HTML 字符串。原始 HTML 一律关闭。
@@ -43,6 +44,7 @@ export function createMarkdown(highlight?: CodeHighlighter): MarkdownItInstance 
     highlight: highlight ? (code, lang) => highlight(code, lang) ?? '' : undefined,
   })
   md.use(mathPlugin)
+  md.use(calloutPlugin)
   // 外链在 App 里会把 WebView 导走，统一新窗口打开
   const defaultLink = md.renderer.rules.link_open ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts))
   md.renderer.rules.link_open = (tokens, idx, opts, env, self) => {

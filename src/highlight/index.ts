@@ -3,7 +3,7 @@ import { TextMap } from '../textmap'
 // 划线显示：优先用 CSS Custom Highlight API，不改动 DOM；不支持时回退为 <mark> 包裹。
 // 点击命中：caretRangeFromPoint → 映射层位置 → 与锚点区间比较，不遍历 Range 调 getClientRects()。
 
-export type PaintKind = 'highlight' | 'ask'
+export type PaintKind = 'highlight' | 'ask' | 'flash'
 
 export interface PaintItem {
   anchorId: string
@@ -12,7 +12,7 @@ export interface PaintItem {
   kind: PaintKind
 }
 
-const NAMES: Record<PaintKind, string> = { highlight: 'wendu-hl', ask: 'wendu-ask' }
+const NAMES: Record<PaintKind, string> = { highlight: 'wendu-hl', ask: 'wendu-ask', flash: 'wendu-flash' }
 const MARK_ATTR = 'data-wendu-mark'
 
 export function supportsCustomHighlight(): boolean {

@@ -1,3 +1,4 @@
+/* 颜色都走这些变量；夜间主题由 <html data-theme="dark"> 切换（见 src/app/theme.ts） */
 :root {
   --bg: #ffffff;
   --fg: #1f2328;
@@ -5,17 +6,70 @@
   --border: #d0d7de;
   --accent: #0969da;
   --surface: #f6f8fa;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --danger: #cf222e;
   /* 侧栏面板：和正文的白底区分开 */
   --panel-bg: #eef2f8;
   --panel-head: #dde6f2;
   --panel-border: #b6c6dc;
+  --panel-title: #0a3069;
+  /* 划线 */
+  --hl-bg: rgba(255, 212, 0, 0.45);
+  --ask-line: #0969da;
+  --flash-bg: rgba(9, 105, 218, 0.25);
+  /* 底部工具栏和提示 */
+  --bar-bg: #24292f;
+  --bar-fg: #ffffff;
+  --bar-muted: #afb8c1;
+  color-scheme: light;
   font-family: system-ui, -apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
   color: var(--fg);
   background: var(--bg);
 }
 
+:root[data-theme='dark'] {
+  --bg: #0d1117;
+  --fg: #d1d7e0;
+  --muted: #8b949e;
+  --border: #30363d;
+  --accent: #4493f8;
+  --surface: #161b22;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --danger: #f85149;
+  --panel-bg: #131c2b;
+  --panel-head: #1b2a40;
+  --panel-border: #2f4a6e;
+  --panel-title: #a5c8ff;
+  --hl-bg: rgba(187, 128, 9, 0.45);
+  --ask-line: #4493f8;
+  --flash-bg: rgba(68, 147, 248, 0.35);
+  --bar-bg: #2d333b;
+  --bar-fg: #e6edf3;
+  --bar-muted: #8b949e;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* 表单控件默认跟随主题颜色，组件里有更具体的样式时以组件为准 */
+button,
+input,
+select,
+textarea {
+  color: var(--fg);
+  font-family: inherit;
+}
+
+select {
+  background: var(--bg);
 }
 
 html,
@@ -143,32 +197,145 @@ body,
   user-select: all;
 }
 
+/* Shiki 同时输出日间和夜间两套颜色，夜间主题时切到 --shiki-dark */
+:root[data-theme='dark'] .md .shiki,
+:root[data-theme='dark'] .md .shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+/* ---------- Obsidian 提示块 ---------- */
+
+.md .callout {
+  --callout: #0969da;
+  margin: 1em 0;
+  padding: 0.4em 1em 0.6em;
+  border-left: 4px solid var(--callout);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--callout) 8%, var(--bg));
+  color: var(--fg);
+}
+
+.md .callout-title {
+  font-weight: 600;
+  color: var(--callout);
+  margin: 0.2em 0;
+}
+
+.md .callout > p {
+  margin: 0.3em 0;
+}
+
+.md .callout-tip,
+.md .callout-hint,
+.md .callout-success {
+  --callout: #1a7f37;
+}
+
+.md .callout-warning,
+.md .callout-caution,
+.md .callout-attention {
+  --callout: #bf8700;
+}
+
+.md .callout-danger,
+.md .callout-error,
+.md .callout-failure,
+.md .callout-bug {
+  --callout: #cf222e;
+}
+
+.md .callout-question,
+.md .callout-faq,
+.md .callout-help,
+.md .callout-example {
+  --callout: #8250df;
+}
+
+:root[data-theme='dark'] .md .callout {
+  --callout: #4493f8;
+}
+
+:root[data-theme='dark'] .md .callout-tip,
+:root[data-theme='dark'] .md .callout-hint,
+:root[data-theme='dark'] .md .callout-success {
+  --callout: #3fb950;
+}
+
+:root[data-theme='dark'] .md .callout-warning,
+:root[data-theme='dark'] .md .callout-caution,
+:root[data-theme='dark'] .md .callout-attention {
+  --callout: #d29922;
+}
+
+:root[data-theme='dark'] .md .callout-danger,
+:root[data-theme='dark'] .md .callout-error,
+:root[data-theme='dark'] .md .callout-failure,
+:root[data-theme='dark'] .md .callout-bug {
+  --callout: #f85149;
+}
+
+:root[data-theme='dark'] .md .callout-question,
+:root[data-theme='dark'] .md .callout-faq,
+:root[data-theme='dark'] .md .callout-help,
+:root[data-theme='dark'] .md .callout-example {
+  --callout: #ab7df8;
+}
+
 /* ---------- 划线 ---------- */
 
 /* Custom Highlight API */
 ::highlight(wendu-hl) {
-  background-color: rgba(255, 212, 0, 0.45);
+  background-color: var(--hl-bg);
 }
 
 ::highlight(wendu-ask) {
-  text-decoration: underline dashed #0969da 2px;
+  text-decoration: underline dashed var(--ask-line) 2px;
   text-underline-offset: 4px;
+}
+
+/* 从笔记跳回原文时闪一下 */
+::highlight(wendu-flash) {
+  background-color: var(--flash-bg);
 }
 
 /* 不支持时回退为 <mark> 包裹 */
 mark.wendu-hl,
 .katex.wendu-hl {
-  background-color: rgba(255, 212, 0, 0.45);
+  background-color: var(--hl-bg);
   color: inherit;
 }
 
 mark.wendu-ask {
   background: none;
   color: inherit;
-  text-decoration: underline dashed #0969da 2px;
+  text-decoration: underline dashed var(--ask-line) 2px;
   text-underline-offset: 4px;
 }
 
 .katex.wendu-ask {
-  border-bottom: 2px dashed #0969da;
+  border-bottom: 2px dashed var(--ask-line);
+}
+
+mark.wendu-flash,
+.katex.wendu-flash {
+  background-color: var(--flash-bg);
+  color: inherit;
+}
+
+/* ---------- 全局提示 ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: 90vw;
+  padding: 8px 14px;
+  background: var(--bar-bg);
+  color: var(--bar-fg);
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0.95;
 }

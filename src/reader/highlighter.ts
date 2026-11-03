@@ -24,7 +24,7 @@ let pending: Promise<HighlighterCore> | null = null
 
 function load(): Promise<HighlighterCore> {
   pending ??= createHighlighterCore({
-    themes: [import('shiki/themes/github-light.mjs')],
+    themes: [import('shiki/themes/github-light.mjs'), import('shiki/themes/github-dark.mjs')],
     langs: [
       import('shiki/langs/javascript.mjs'),
       import('shiki/langs/typescript.mjs'),
@@ -53,7 +53,8 @@ export async function getCodeHighlighter(): Promise<CodeHighlighter | null> {
     return (code, rawLang) => {
       const lang = ALIASES[rawLang.toLowerCase()] ?? rawLang.toLowerCase()
       if (!loaded.has(lang)) return null
-      return hl.codeToHtml(code, { lang, theme: 'github-light' })
+      // 同时输出两套颜色，夜间主题由 CSS 切到 --shiki-dark，切换主题不用重新渲染
+      return hl.codeToHtml(code, { lang, themes: { light: 'github-light', dark: 'github-dark' } })
     }
   } catch (e) {
     console.warn('代码高亮加载失败，按普通代码块显示', e)
