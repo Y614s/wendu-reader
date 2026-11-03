@@ -1,0 +1,190 @@
+import type { EntityTable } from 'dexie'
+import type { AnchorRecord, ConversationRecord, DocumentRecord, HighlightRecord, NoteRecord, SettingRecord, WenduDB } from '.'
+import { API_KEY_PREFIX } from '../ai/providers'
+
+// 全量备份与恢复。
+// - 备份里永远没有 API Key（ai.key.*），也不带本机诊断数据（diag.*）。
+// - 恢复前先完整校验；校验失败不动现有数据。替换在一个事务里完成，中途出错整体回滚。
+
+export const BACKUP_APP = 'wendu-reader'
+export const BACKUP_FORMAT_VERSION = 1
+
+export interface BackupTables {
+  documents: DocumentRecord[]
+  anchors: AnchorRecord[]
+  highlights: HighlightRecord[]
+  notes: NoteRecord[]
+  conversations: ConversationRecord[]
+  settings: SettingRecord[]
+}
+
+export interface BackupFile {
+  app: typeof BACKUP_APP
+  formatVersion: number
+  exportedAt: number
+  tables: BackupTables
+}
+
+export type RestoreMode = 'merge' | 'replace'
+
+export class BackupError extends Error {}
+
+/** 只属于这台设备、不进备份的设置项 */
+function isLocalOnlySetting(key: string): boolean {
+  return key.startsWith(API_KEY_PREFIX) || key.startsWith('diag.')
+}
+
+export async function createBackup(db: WenduDB, now = Date.now()): Promise<BackupFile> {
+  return db.transaction('r', [db.documents, db.anchors, db.highlights, db.notes, db.conversations, db.settings], async () => ({
+    app: BACKUP_APP,
+    formatVersion: BACKUP_FORMAT_VERSION,
+    exportedAt: now,
+    tables: {
+      documents: await db.documents.toArray(),
+      anchors: await db.anchors.toArray(),
+      highlights: await db.highlights.toArray(),
+      notes: await db.notes.toArray(),
+      conversations: await db.conversations.toArray(),
+      settings: (await db.settings.toArray()).filter((s) => !isLocalOnlySetting(s.key)),
+    },
+  }))
+}
+
+// ---------- 校验 ----------
+
+type FieldType = 'string' | 'number' | 'array' | 'nullable-string' | 'nullable-number'
+
+const REQUIRED: Record<keyof BackupTables, Record<string, FieldType>> = {
+  documents: { id: 'string', title: 'string', source: 'string', hash: 'string', importedAt: 'number', lastReadAt: 'number', readingPosition: 'nullable-number' },
+  anchors: { id: 'string', docId: 'string', docHash: 'string', quote: 'string', prefix: 'string', suffix: 'string', start: 'number', end: 'number' },
+  highlights: { id: 'string', anchorId: 'string', color: 'string', createdAt: 'number' },
+  notes: { id: 'string', anchorId: 'string', text: 'string', createdAt: 'number', updatedAt: 'number' },
+  conversations: { id: 'string', docId: 'string', anchorId: 'nullable-string', kind: 'string', status: 'string', messages: 'array', provider: 'string', model: 'string', createdAt: 'number' },
+  settings: { key: 'string' },
+}
+
+function typeOk(v: unknown, t: FieldType): boolean {
+  switch (t) {
+    case 'string':
+      return typeof v === 'string'
+    case 'number':
+      return typeof v === 'number' && Number.isFinite(v)
+    case 'array':
+      return Array.isArray(v)
+    case 'nullable-string':
+      return v === null || v === undefined || typeof v === 'string'
+    case 'nullable-number':
+      return v === null || v === undefined || (typeof v === 'number' && Number.isFinite(v))
+  }
+}
+
+/** 解析并完整校验备份文件；任何问题都抛出 BackupError，说明原因 */
+export function parseBackup(text: string): BackupFile {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new BackupError('文件不是有效的 JSON，可能已损坏或不是问读的备份文件。')
+  }
+  const obj = data as Partial<BackupFile> | null
+  if (!obj || typeof obj !== 'object' || obj.app !== BACKUP_APP) throw new BackupError('这不是问读的备份文件。')
+  if (obj.formatVersion !== BACKUP_FORMAT_VERSION) {
+    throw new BackupError(`备份格式版本是 ${String(obj.formatVersion)}，当前版本只认识 ${BACKUP_FORMAT_VERSION}。请把 App 更新到最新版再恢复。`)
+  }
+  if (!obj.tables || typeof obj.tables !== 'object') throw new BackupError('备份文件缺少数据部分。')
+
+  for (const table of Object.keys(REQUIRED) as (keyof BackupTables)[]) {
+    const rows = (obj.tables as Partial<BackupTables>)[table]
+    if (!Array.isArray(rows)) throw new BackupError(`备份文件缺少「${table}」数据。`)
+    const keyField = table === 'settings' ? 'key' : 'id'
+    const seen = new Set<string>()
+    rows.forEach((row, i) => {
+      if (!row || typeof row !== 'object') throw new BackupError(`「${table}」第 ${i + 1} 条数据格式不对。`)
+      for (const [field, type] of Object.entries(REQUIRED[table])) {
+        if (!typeOk((row as unknown as Record<string, unknown>)[field], type)) {
+          throw new BackupError(`「${table}」第 ${i + 1} 条数据的「${field}」缺失或格式不对。`)
+        }
+      }
+      const k = (row as unknown as Record<string, string>)[keyField]
+      if (seen.has(k)) throw new BackupError(`「${table}」里有重复的 ${keyField}：${k}。`)
+      seen.add(k)
+    })
+  }
+  return {
+    app: BACKUP_APP,
+    formatVersion: BACKUP_FORMAT_VERSION,
+    exportedAt: typeof obj.exportedAt === 'number' ? obj.exportedAt : 0,
+    tables: obj.tables as BackupTables,
+  }
+}
+
+// ---------- 恢复 ----------
+
+export interface RestoreResult {
+  added: Record<keyof BackupTables, number>
+  /** 合并时本机已有、被跳过的条数 */
+  skipped: number
+}
+
+export async function restoreBackup(db: WenduDB, backup: BackupFile, mode: RestoreMode): Promise<RestoreResult> {
+  const t = backup.tables
+  const settings = t.settings.filter((s) => !isLocalOnlySetting(s.key))
+  const added = { documents: 0, anchors: 0, highlights: 0, notes: 0, conversations: 0, settings: 0 }
+  let skipped = 0
+
+  await db.transaction('rw', [db.documents, db.anchors, db.highlights, db.notes, db.conversations, db.settings], async () => {
+    if (mode === 'replace') {
+      // 本机的 Key 和诊断数据保留，其余全部换成备份里的
+      const keep = (await db.settings.toArray()).filter((s) => isLocalOnlySetting(s.key))
+      await Promise.all([db.documents.clear(), db.anchors.clear(), db.highlights.clear(), db.notes.clear(), db.conversations.clear(), db.settings.clear()])
+      await db.documents.bulkAdd(t.documents)
+      await db.anchors.bulkAdd(t.anchors)
+      await db.highlights.bulkAdd(t.highlights)
+      await db.notes.bulkAdd(t.notes)
+      await db.conversations.bulkAdd(t.conversations)
+      await db.settings.bulkAdd([...settings, ...keep])
+      added.documents = t.documents.length
+      added.anchors = t.anchors.length
+      added.highlights = t.highlights.length
+      added.notes = t.notes.length
+      added.conversations = t.conversations.length
+      added.settings = settings.length
+      return
+    }
+
+    // 合并：同一个 id 本机已有时保留本机的
+    const mergeTable = async <R extends { id: string }>(table: EntityTable<R, 'id'>, rows: R[]) => {
+      const existing = await table.bulkGet(rows.map((r) => r.id) as Parameters<typeof table.bulkGet>[0])
+      const fresh = rows.filter((_, i) => existing[i] === undefined)
+      skipped += rows.length - fresh.length
+      if (fresh.length) await table.bulkAdd(fresh)
+      return fresh.length
+    }
+    added.documents = await mergeTable(db.documents, t.documents)
+    added.anchors = await mergeTable(db.anchors, t.anchors)
+    added.highlights = await mergeTable(db.highlights, t.highlights)
+    added.notes = await mergeTable(db.notes, t.notes)
+    added.conversations = await mergeTable(db.conversations, t.conversations)
+    const existingSettings = await db.settings.bulkGet(settings.map((s) => s.key))
+    const freshSettings = settings.filter((_, i) => existingSettings[i] === undefined)
+    skipped += settings.length - freshSettings.length
+    if (freshSettings.length) await db.settings.bulkAdd(freshSettings)
+    added.settings = freshSettings.length
+  })
+  return { added, skipped }
+}
+
+// ---------- 备份提醒 ----------
+
+export const REMIND_AFTER_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * 是否该提醒备份：距上次备份（从没备份过则从开始使用算起）超过 7 天，
+ * 并且这一轮超期里还没提醒过。
+ */
+export function shouldRemindBackup(now: number, lastExportAt: number | null, since: number, lastRemindedAt: number | null): boolean {
+  const base = lastExportAt ?? since
+  const due = base + REMIND_AFTER_MS
+  if (now < due) return false
+  return lastRemindedAt === null || lastRemindedAt < due
+}
