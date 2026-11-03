@@ -7,4 +7,8 @@ export const readerState = reactive({
   codeHighlight: 'pending' as 'pending' | 'loaded' | 'failed',
   anchors: 0,
   orphans: 0,
+  /** 本次启动以来保存阅读位置的次数和最近一次的值 */
+  positionSaves: 0,
+  lastSavedPosition: null as number | null,
+  restoredPosition: null as number | null,
 })
