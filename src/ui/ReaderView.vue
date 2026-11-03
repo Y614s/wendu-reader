@@ -401,7 +401,8 @@ onBeforeUnmount(() => {
   width: 40%;
   max-width: 520px;
   min-width: 320px;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--panel-border);
+  box-shadow: -2px 0 8px rgba(31, 35, 40, 0.08);
 }
 /* 竖屏：面板变成底部抽屉 */
 @media (orientation: portrait) {
@@ -418,7 +419,12 @@ onBeforeUnmount(() => {
     flex: 1 1 55%;
     min-height: 0;
     border-left: none;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--panel-border);
+    border-radius: 14px 14px 0 0;
+    overflow: hidden;
+    /* 抽屉浮在正文上方的感觉 */
+    box-shadow: 0 -4px 16px rgba(31, 35, 40, 0.18);
+    z-index: 1;
   }
 }
 .toolbar {

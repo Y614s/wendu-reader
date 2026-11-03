@@ -23,6 +23,7 @@ android/app/release/
 # 编辑器与系统文件
 .idea/
 .vscode/*
+.claude/
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db

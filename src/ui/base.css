@@ -5,6 +5,10 @@
   --border: #d0d7de;
   --accent: #0969da;
   --surface: #f6f8fa;
+  /* 侧栏面板：和正文的白底区分开 */
+  --panel-bg: #eef2f8;
+  --panel-head: #dde6f2;
+  --panel-border: #b6c6dc;
   font-family: system-ui, -apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
   color: var(--fg);
   background: var(--bg);

@@ -225,14 +225,34 @@ onBeforeUnmount(stop)
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  background: var(--bg);
+  background: var(--panel-bg);
 }
 .panel-head {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  background: var(--panel-head);
+  border-bottom: 1px solid var(--panel-border);
+  color: #0a3069;
+}
+/* 竖屏抽屉顶部的把手条 */
+@media (orientation: portrait) {
+  .panel-head {
+    padding-top: 16px;
+  }
+  .panel-head::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 2px;
+    background: var(--panel-border);
+  }
 }
 .panel-body {
   flex: 1;
@@ -243,7 +263,7 @@ onBeforeUnmount(stop)
   margin: 0 0 12px;
   padding: 8px 12px;
   border-left: 3px solid var(--accent);
-  background: var(--surface);
+  background: var(--bg);
   white-space: pre-wrap;
   max-height: 30vh;
   overflow: auto;
@@ -269,7 +289,7 @@ onBeforeUnmount(stop)
 }
 .msg.user {
   padding: 6px 10px;
-  background: var(--surface);
+  background: var(--bg);
   border-radius: 8px;
   white-space: pre-wrap;
 }
