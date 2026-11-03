@@ -6,6 +6,7 @@ describe('parseHash', () => {
     expect(parseHash('#/settings')).toBe('settings')
     expect(parseHash('#/diagnostics')).toBe('diagnostics')
     expect(parseHash('#settings')).toBe('settings')
+    expect(parseHash('#/library')).toBe('library')
   })
 
   it('未知或空 hash 回到阅读页', () => {

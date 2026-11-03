@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { route, navigate, type RouteName } from './router'
+import { appState } from './store'
+import LibraryView from '../ui/LibraryView.vue'
 import ReaderView from '../ui/ReaderView.vue'
 import SettingsView from '../ui/SettingsView.vue'
 import DiagnosticsView from '../diagnostics/DiagnosticsView.vue'
 
 const tabs: { name: RouteName; label: string }[] = [
+  { name: 'library', label: '书架' },
   { name: 'reader', label: '阅读' },
   { name: 'settings', label: '设置' },
   { name: 'diagnostics', label: '诊断' },
@@ -26,10 +29,12 @@ const tabs: { name: RouteName; label: string }[] = [
       </button>
     </nav>
     <main class="page">
-      <!-- 阅读页常驻：去设置或诊断页再回来，选区缓存、面板和渲染结果都还在 -->
-      <ReaderView v-show="route === 'reader'" />
+      <LibraryView v-if="route === 'library'" />
+      <!-- 阅读页常驻：去其他页再回来，选区缓存、面板和渲染结果都还在 -->
+      <ReaderView v-show="route === 'reader'" :active="route === 'reader'" />
       <SettingsView v-if="route === 'settings'" />
       <DiagnosticsView v-else-if="route === 'diagnostics'" />
     </main>
+    <div v-if="appState.toast" class="toast">{{ appState.toast }}</div>
   </div>
 </template>

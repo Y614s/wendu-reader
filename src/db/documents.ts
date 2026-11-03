@@ -42,18 +42,42 @@ export async function setCurrentDocument(id: string): Promise<void> {
   await db.documents.update(id, { lastReadAt: Date.now() })
 }
 
-/** 当前文档；第一次打开时导入内置测试文档。 */
-export async function loadCurrentDocument(fetchSample: () => Promise<string>): Promise<DocumentRecord> {
+export async function clearCurrentDocument(): Promise<void> {
+  await db.settings.delete(CURRENT_DOC_KEY)
+}
+
+/**
+ * 当前文档。只在第一次启动时导入内置测试文档；用户删掉它以后不再自动导回来。
+ * 没有当前文档时返回 null，由界面引导去书架。
+ */
+export async function loadCurrentDocument(fetchSample: () => Promise<string>): Promise<DocumentRecord | null> {
   const id = await getSetting<string | null>(CURRENT_DOC_KEY, null)
   const doc = id ? await db.documents.get(id) : undefined
   if (doc) return doc
 
   const sampleId = await getSetting<string | null>(SAMPLE_DOC_KEY, null)
-  let sample = sampleId ? await db.documents.get(sampleId) : undefined
-  if (!sample) {
-    sample = await importDocument(await fetchSample(), 'test.md')
-    await setSetting(SAMPLE_DOC_KEY, sample.id)
-  }
+  if (sampleId !== null) return null
+  const sample = await importDocument(await fetchSample(), 'test.md')
+  await setSetting(SAMPLE_DOC_KEY, sample.id)
   await setCurrentDocument(sample.id)
   return sample
+}
+
+/** 删除文档，连同它的锚点、划线、批注和对话一起删，放在一个事务里 */
+export async function deleteDocument(id: string): Promise<void> {
+  await db.transaction('rw', [db.documents, db.anchors, db.highlights, db.notes, db.conversations, db.settings], async () => {
+    const anchorIds = (await db.anchors.where('docId').equals(id).primaryKeys()) as string[]
+    if (anchorIds.length) {
+      await db.highlights.where('anchorId').anyOf(anchorIds).delete()
+      await db.notes.where('anchorId').anyOf(anchorIds).delete()
+    }
+    await db.anchors.where('docId').equals(id).delete()
+    await db.conversations.where('docId').equals(id).delete()
+    await db.documents.delete(id)
+    if ((await getSetting<string | null>(CURRENT_DOC_KEY, null)) === id) await db.settings.delete(CURRENT_DOC_KEY)
+  })
+}
+
+export async function saveReadingPosition(id: string, pos: number): Promise<void> {
+  await db.documents.update(id, { readingPosition: pos, lastReadAt: Date.now() })
 }
