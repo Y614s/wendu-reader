@@ -26,9 +26,10 @@ const tabs: { name: RouteName; label: string }[] = [
       </button>
     </nav>
     <main class="page">
-      <ReaderView v-if="route === 'reader'" />
-      <SettingsView v-else-if="route === 'settings'" />
-      <DiagnosticsView v-else />
+      <!-- 阅读页常驻：去设置或诊断页再回来，选区缓存、面板和渲染结果都还在 -->
+      <ReaderView v-show="route === 'reader'" />
+      <SettingsView v-if="route === 'settings'" />
+      <DiagnosticsView v-else-if="route === 'diagnostics'" />
     </main>
   </div>
 </template>
