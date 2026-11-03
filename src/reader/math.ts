@@ -26,6 +26,8 @@ function mathInline(state: StateInline, silent: boolean): boolean {
       continue
     }
     if (src[end] === '$') break
+    // 行内公式不跨行、不跨行内代码：否则「价格 $5 和 `a$b`」这类文字会被当成一整段公式
+    if (src[end] === '\n' || src[end] === '`') return false
     end++
   }
   if (end >= state.posMax || src[end] !== '$') return false

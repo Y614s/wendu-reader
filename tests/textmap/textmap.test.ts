@@ -128,3 +128,17 @@ describe('TextMap 公式选区', () => {
     expect(map.textWithTex(r.start, r.end)).toBe('前文。\n$$n(x) \\ge 2^{bh(x)} - 1$$\n后文。')
   })
 })
+
+describe('行内公式不误判', () => {
+  it('普通美元符号、跨行内代码、跨行都不当成公式', () => {
+    for (const md of ['花费 $100，读取 $HOME 变量', '价格 $5 和 `a$b` 两处', '第一行 $x\n第二行 y$ 结束', '正则 `/^a$/` 与 `/^b$/`']) {
+      const root = mountMd(md)
+      expect(root.querySelector('.katex'), md).toBeNull()
+    }
+  })
+
+  it('正常的行内公式照常渲染', () => {
+    const root = mountMd('高度 $h \le 2\log_2(n+1)$，以及 `code` 和 $n$。')
+    expect(root.querySelectorAll('.katex')).toHaveLength(2)
+  })
+})
