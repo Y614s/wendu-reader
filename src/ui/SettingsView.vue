@@ -3,9 +3,8 @@ import { onMounted, ref } from 'vue'
 import ProviderSettings from './ProviderSettings.vue'
 import { setTheme, themeSetting, type ThemeSetting } from '../app/theme'
 import { prefs, setContextBudget, setEdgeTap } from '../app/prefs'
-import { appState, showToast } from '../app/store'
+import { showToast } from '../app/store'
 import { db, getSetting, setSetting } from '../db'
-import { loadCurrentDocument } from '../db/documents'
 import { BackupError, clearAllData, createBackup, parseBackup, restoreBackup, REMIND_AFTER_MS, type RestoreMode } from '../db/backup'
 import { getProviderSettings, PROVIDER_PRESETS } from '../ai/providers'
 import { saveTextFile } from '../platform/files'
@@ -74,15 +73,19 @@ async function onRestoreFile(e: Event) {
         : `把备份合并进来？\n\n备份里有 ${summary}。\n本机已有的同一条数据保留本机的，不会被覆盖。`
     if (!confirm(warn)) return
     const r = await restoreBackup(db, backup, restoreMode.value)
-    const doc = await loadCurrentDocument(async () => '')
-    appState.currentDocId = doc?.id ?? null
-    appState.docsVersion++
     const hasKey = (await Promise.all(PROVIDER_PRESETS.map((p) => getProviderSettings(p.id)))).some((s) => s.hasKey)
-    restoreMessage.value =
+    const message =
       `恢复完成：新增 ${r.added.documents} 篇文档、${r.added.highlights} 处划线、${r.added.notes} 条批注、${r.added.conversations} 条对话` +
       (r.skipped ? `；本机已有的 ${r.skipped} 条保留不变` : '') +
       '。' +
       (hasKey ? '' : '备份里不含 API Key，请在上方重新填写。')
+    // 备份里的主题、预算等设置已写进数据库，重新加载让各处都按新数据显示；结果提示带到重新加载之后
+    try {
+      sessionStorage.setItem(RESTORE_MESSAGE_KEY, message)
+    } catch {
+      // 存不了就只是看不到结果提示，不影响恢复
+    }
+    location.reload()
   } catch (err) {
     restoreMessage.value = err instanceof BackupError ? `没有恢复：${err.message} 现有数据没有任何改动。` : `恢复失败，现有数据没有改动：${String(err)}`
   } finally {
@@ -105,7 +108,18 @@ async function clearAll() {
   }
 }
 
+const RESTORE_MESSAGE_KEY = 'wendu.restoreMessage'
+
 onMounted(async () => {
+  try {
+    const msg = sessionStorage.getItem(RESTORE_MESSAGE_KEY)
+    if (msg) {
+      restoreMessage.value = msg
+      sessionStorage.removeItem(RESTORE_MESSAGE_KEY)
+    }
+  } catch {
+    // 读不到上次恢复的结果提示，忽略
+  }
   lastExportAt.value = await getSetting<number | null>('backup.lastExportAt', null)
 })
 </script>

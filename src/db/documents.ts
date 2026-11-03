@@ -57,7 +57,10 @@ export async function loadCurrentDocument(fetchSample: () => Promise<string>): P
 
   const sampleId = await getSetting<string | null>(SAMPLE_DOC_KEY, null)
   if (sampleId !== null) return null
-  const sample = await importDocument(await fetchSample(), 'test.md')
+  const text = await fetchSample()
+  // 读不到内置文档时不导入空文档，下次启动再试
+  if (!text.trim()) return null
+  const sample = await importDocument(text, 'test.md')
   await setSetting(SAMPLE_DOC_KEY, sample.id)
   await setCurrentDocument(sample.id)
   return sample
