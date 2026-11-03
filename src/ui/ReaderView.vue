@@ -27,6 +27,7 @@ import {
   updateNote,
   type LocatedAnchor,
 } from '../anchor/store'
+import { anchorLeftBehind } from '../anchor/cleanup'
 import type { AnchorRecord } from '../db'
 import { clearSelectionCache, recordToolbarClick, selectionState, watchSelection, type CachedSelection } from '../selection'
 import { buildContext, type ContextScope } from '../ai/context'
@@ -161,7 +162,11 @@ function restorePosition() {
 async function loadDoc(id: string | null) {
   await savePositionNow()
   clearSelectionCache()
+  // 换文档时忘掉上一篇的提问面板，免得点「提问」回到另一篇的原文；上一篇没留下内容的锚点顺手清掉
+  const leftAnchor = lastAsk.value?.anchorId ?? null
+  lastAsk.value = null
   panel.value = null
+  if (leftAnchor) void deleteAnchorIfUnused(leftAnchor)
   tapped.value = null
   tocOpen.value = false
   if (!id) {
@@ -410,10 +415,11 @@ async function cleanupAnchor(anchorId: string) {
   }
 }
 
-watch(panel, (now, prev) => {
+// 切到「笔记」再切回来不算离开；关闭侧栏、换到另一处原文或整篇提问时才检查空锚点
+watch(panel, (now) => {
+  const left = anchorLeftBehind(lastAsk.value?.anchorId ?? null, now)
   if (now?.mode === 'ask') lastAsk.value = now
-  const prevAnchor = askAnchorOf(prev)
-  if (prevAnchor && prevAnchor !== askAnchorOf(now)) void cleanupAnchor(prevAnchor)
+  if (left) void cleanupAnchor(left)
 })
 
 async function onDeleteConversation(conv: ConversationRecord) {
