@@ -33,6 +33,8 @@ export interface HighlightRecord {
 export interface NoteRecord {
   id: string
   anchorId: string
+  /** 自己写的批注，或从 AI 回答里存的笔记。任务 02 新增，旧数据没有时按批注处理 */
+  source?: 'annotation' | 'ai'
   text: string
   createdAt: number
   updatedAt: number

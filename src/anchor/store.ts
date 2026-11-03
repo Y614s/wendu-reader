@@ -1,4 +1,4 @@
-import { db, newId, type AnchorRecord, type ConversationRecord, type DocumentRecord, type HighlightRecord } from '../db'
+import { db, newId, type AnchorRecord, type ConversationRecord, type DocumentRecord, type HighlightRecord, type NoteRecord } from '../db'
 import { createSelector, locate } from '.'
 
 export const DEFAULT_COLOR = 'yellow'
@@ -23,6 +23,7 @@ export async function removeHighlightsOf(anchorId: string): Promise<void> {
 export interface DocAnnotations {
   anchors: AnchorRecord[]
   highlights: HighlightRecord[]
+  notes: NoteRecord[]
   conversations: ConversationRecord[]
 }
 
@@ -30,8 +31,9 @@ export async function loadAnnotations(docId: string): Promise<DocAnnotations> {
   const anchors = await db.anchors.where('docId').equals(docId).toArray()
   const ids = anchors.map((a) => a.id)
   const highlights = ids.length ? await db.highlights.where('anchorId').anyOf(ids).toArray() : []
+  const notes = ids.length ? await db.notes.where('anchorId').anyOf(ids).toArray() : []
   const conversations = await db.conversations.where('docId').equals(docId).toArray()
-  return { anchors, highlights, conversations }
+  return { anchors, highlights, notes, conversations }
 }
 
 export interface LocatedAnchor {
@@ -50,4 +52,21 @@ export function locateAnchors(text: string, anchors: AnchorRecord[]): { located:
     else located.push({ anchor, start: r.start, end: r.end })
   }
   return { located, orphans }
+}
+
+// ---------- 批注和笔记 ----------
+
+export async function addNote(anchorId: string, text: string, source: 'annotation' | 'ai'): Promise<NoteRecord> {
+  const now = Date.now()
+  const note: NoteRecord = { id: newId(), anchorId, source, text, createdAt: now, updatedAt: now }
+  await db.notes.add(note)
+  return note
+}
+
+export async function updateNote(id: string, text: string): Promise<void> {
+  await db.notes.update(id, { text, updatedAt: Date.now() })
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  await db.notes.delete(id)
 }
