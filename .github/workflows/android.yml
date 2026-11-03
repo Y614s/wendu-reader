@@ -114,7 +114,12 @@ jobs:
             exit 1
           fi
           apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
-          "$apksigner" verify --print-certs "$src" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+          echo "使用 $apksigner"
+          # 以 apksigner 的退出码判断签名是否有效；输出只含公开的证书信息，完整打印便于排查
+          if ! "$apksigner" verify --verbose --print-certs "$src"; then
+            echo "::error::APK 签名校验失败，见上方 apksigner 输出。"
+            exit 1
+          fi
           version=$(node -p "require('./package.json').version")
           name="wendu-reader-${version}-${GITHUB_RUN_NUMBER}.apk"
           mv "$src" "$name"
