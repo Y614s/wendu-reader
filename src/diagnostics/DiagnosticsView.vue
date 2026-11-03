@@ -5,7 +5,8 @@ import { copyText } from '../platform/share'
 import { startupState } from '../app/startup'
 import { selectionState } from '../selection'
 import { readerState } from '../reader/state'
-import { PROVIDER_PRESETS, getProviderConfig, isConfigured, type ProviderConfig } from '../ai/providers'
+import { swState } from '../platform/pwa'
+import { PROVIDER_PRESETS, getProviderConfig, getProviderSettings, type ProviderSettings } from '../ai/providers'
 import { ChatError, streamChat } from '../ai/client'
 
 // 集中展示只能在真机上确认的信息。「复制诊断报告」生成纯文本，不含 API Key。
@@ -34,14 +35,16 @@ interface NetResult {
   error: string
 }
 
-const providers = ref<ProviderConfig[]>([])
+// 只保存不含 Key 的设置；测试时才取完整配置
+const providers = ref<ProviderSettings[]>([])
 const net = reactive<Record<string, NetResult>>({})
 
 function nameOf(id: string) {
   return PROVIDER_PRESETS.find((p) => p.id === id)?.name ?? id
 }
 
-async function testProvider(cfg: ProviderConfig) {
+async function testProvider(p: ProviderSettings) {
+  const cfg = await getProviderConfig(p.providerId)
   const r: NetResult = { running: true, status: '…', cors: '…', firstToken: '…', chunks: '…', total: '…', sample: '', error: '' }
   net[cfg.providerId] = r
   const t0 = performance.now()
@@ -105,6 +108,8 @@ const report = computed(() => {
     `estimate()：${estimate.value}`,
     `启动计数器：${startupState.launchCount ?? startupState.dbError ?? '—'}`,
     `本文锚点：${readerState.anchors}，孤立：${readerState.orphans}`,
+    `阅读位置：保存 ${readerState.positionSaves} 次，最近 ${readerState.lastSavedPosition ?? '—'}，恢复到 ${readerState.restoredPosition ?? '—'}`,
+    `Service Worker：${swState.status}`,
     '',
     '【网络】',
     ...providers.value.map((p) => {
@@ -137,8 +142,8 @@ onMounted(async () => {
   } catch (e) {
     estimate.value = String(e)
   }
-  const all = await Promise.all(PROVIDER_PRESETS.map((p) => getProviderConfig(p.id)))
-  providers.value = all.filter(isConfigured)
+  const all = await Promise.all(PROVIDER_PRESETS.map((p) => getProviderSettings(p.id)))
+  providers.value = all.filter((p) => p.hasKey && p.model && p.baseURL && !p.baseURL.includes('{'))
 })
 </script>
 
@@ -187,6 +192,13 @@ onMounted(async () => {
         <dd>{{ estimate }}</dd>
         <dt>启动计数器（每次启动加一，覆盖安装后应继续累加）</dt>
         <dd class="big">{{ startupState.launchCount ?? (startupState.dbError || '…') }}</dd>
+        <dt>阅读位置（本次启动以来）</dt>
+        <dd>
+          保存 {{ readerState.positionSaves }} 次，最近一次 {{ readerState.lastSavedPosition ?? '—' }}；打开文档时恢复到
+          {{ readerState.restoredPosition ?? '—' }}
+        </dd>
+        <dt>Service Worker（网页版离线）</dt>
+        <dd>{{ swState.status }}</dd>
       </dl>
     </section>
 
@@ -277,13 +289,13 @@ dd {
   font-weight: 600;
 }
 .ok {
-  color: #1a7f37;
+  color: var(--ok);
 }
 .bad {
-  color: #cf222e;
+  color: var(--danger);
 }
 .warn {
-  color: #9a6700;
+  color: var(--warn);
 }
 .muted {
   color: var(--muted);
