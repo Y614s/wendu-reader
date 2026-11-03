@@ -67,7 +67,10 @@ describe('导出 md', () => {
         { id: 'a4', start: block.start, quote: map.textWithTex(block.start, block.end), highlighted: false },
         { id: 'a5', start: plain.start + 2, quote: '只建了锚点、什么都没有', highlighted: false },
       ],
-      orphans: [{ id: 'o1', quote: '被删掉的一句话' }],
+      orphans: [
+        { id: 'o1', quote: '被删掉的一句话', highlighted: false },
+        { id: 'o2', quote: '什么都没留下的空锚点', highlighted: false },
+      ],
       notes: [
         note('n1', 'a1', '和 AVL 树比，旋转更少。'),
         note('n2', 'a2', '树高是对数级。', 'ai'),
@@ -175,5 +178,62 @@ exported: 2026-11-03
       conversations: [],
     })
     expect(out).toContain('> 第一行\n>\n> 第三行')
+  })
+})
+
+describe('导出 md 的边界情况', () => {
+  const base: ExportInput = { title: 't', source: 't.md', date: '2026-11-03', sections: [], anchors: [], orphans: [], notes: [], conversations: [] }
+
+  it('失败的提问不导出，不留下只有「问」的记录', () => {
+    const out = exportMarkdown({
+      ...base,
+      anchors: [{ id: 'a', start: 0, quote: '原文', highlighted: false }],
+      conversations: [
+        conv({
+          anchorId: 'a',
+          messages: [
+            { role: 'user', content: '失败的问', createdAt: T },
+            { role: 'assistant', content: '', error: '网络不通', createdAt: T },
+            { role: 'user', content: '成功的问', createdAt: T },
+            { role: 'assistant', content: '成功的答', createdAt: T },
+          ],
+        }),
+        conv({ id: 'c2', anchorId: null, messages: [{ role: 'user', content: '整篇也失败了', createdAt: T }] }),
+      ],
+    })
+    expect(out).not.toContain('失败的问')
+    expect(out).toContain('- 问：成功的问\n- 答：成功的答')
+    expect(out).not.toContain('整篇提问')
+  })
+
+  it('全部失败的对话和空锚点一起不导出', () => {
+    const out = exportMarkdown({
+      ...base,
+      anchors: [{ id: 'a', start: 0, quote: '原文', highlighted: false }],
+      orphans: [{ id: 'o', quote: '孤立的空锚点', highlighted: false }],
+      conversations: [conv({ anchorId: 'a', messages: [{ role: 'user', content: '问', createdAt: T }] })],
+    })
+    expect(out).not.toContain('原文')
+    expect(out).not.toContain('原文已找不到')
+  })
+
+  it('标题里有冒号等特殊字符时，YAML 加引号', () => {
+    const out = exportMarkdown({ ...base, title: '红黑树: 性质', source: '红黑树: 性质.md' })
+    expect(out).toContain('title: "红黑树: 性质 · 笔记"\nsource: "红黑树: 性质.md"')
+  })
+
+  it('多行或块级的笔记另起一行，不接在标签后面', () => {
+    const out = exportMarkdown({
+      ...base,
+      anchors: [{ id: 'a', start: 0, quote: '原文', highlighted: true }],
+      notes: [
+        note('n1', 'a', '```python\nx = 1\n```', 'ai'),
+        note('n2', 'a', '- 甲\n- 乙', 'ai'),
+        note('n3', 'a', '一行就够了'),
+      ],
+    })
+    expect(out).toContain('**AI 回答摘录**：\n\n```python\nx = 1\n```')
+    expect(out).toContain('**AI 回答摘录**：\n\n- 甲\n- 乙')
+    expect(out).toContain('**批注**：一行就够了')
   })
 })
