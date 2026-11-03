@@ -33,6 +33,7 @@ import { sendToApp } from '../share'
 import { copyText } from '../platform/share'
 import { safeFileName, saveTextFile } from '../platform/files'
 import { exportMarkdown, formatDate } from '../export/markdown'
+import { exportOriginal } from '../export/original'
 import AskPanel from './AskPanel.vue'
 import NotesPanel from './NotesPanel.vue'
 import NoteEditor from './NoteEditor.vue'
@@ -56,6 +57,7 @@ const panel = ref<Panel | null>(null)
 const tapped = ref<{ highlightIds: string[]; anchorId: string; convAnchorId: string | null; convCount: number } | null>(null)
 const editor = ref<{ anchorId: string; quote: string; note: NoteRecord | null } | null>(null)
 const tocOpen = ref(false)
+const exportMenu = ref(false)
 const progress = ref(0)
 const currentHeading = ref<Heading | null>(null)
 const toolbarBottom = ref(0)
@@ -456,10 +458,25 @@ async function exportNotes() {
   })
   try {
     const r = await saveTextFile(`${safeFileName(doc.value.title)} · 笔记.md`, text, 'text/markdown')
-    if (r === 'downloaded') showToast('已导出')
+    if (r === 'downloaded') showToast('已导出笔记')
   } catch (e) {
     showToast(`导出失败：${String(e)}`, 4000)
   }
+}
+
+async function onExportOriginal() {
+  exportMenu.value = false
+  if (!doc.value) return
+  try {
+    if ((await exportOriginal(doc.value)) === 'downloaded') showToast('已导出原文')
+  } catch (e) {
+    showToast(`导出失败：${String(e)}`, 4000)
+  }
+}
+
+async function onExportNotes() {
+  exportMenu.value = false
+  await exportNotes()
 }
 
 // ---------- 键盘与可视区域 ----------
@@ -561,6 +578,13 @@ onBeforeUnmount(() => {
         <span class="doc-title">{{ doc?.title ?? '' }}<span v-if="currentHeading" class="cur-sec"> · {{ currentHeading.title }}</span></span>
         <button v-if="doc" @click="openWholeAsk">整篇提问</button>
         <button v-if="doc" @click="panel = { mode: 'notes', focusPending: false }">笔记</button>
+        <span v-if="doc" class="menu-wrap">
+          <button @click="exportMenu = !exportMenu">导出</button>
+          <span v-if="exportMenu" class="menu">
+            <button @click="onExportNotes">导出笔记（md）<small>划线、批注、问答，按章节整理</small></button>
+            <button @click="onExportOriginal">导出原文（md）<small>这篇文章本身，不含笔记</small></button>
+          </span>
+        </span>
         <button v-if="pendingCount" class="pending" @click="panel = { mode: 'notes', focusPending: true }">待补充 {{ pendingCount }}</button>
       </div>
       <div class="progress"><div class="bar" :style="{ width: progress * 100 + '%' }" /></div>
@@ -693,6 +717,35 @@ onBeforeUnmount(() => {
 }
 .doc-bar button:disabled {
   opacity: 0.4;
+}
+.menu-wrap {
+  position: relative;
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  z-index: 15;
+}
+.doc-bar .menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: none;
+  text-align: left;
+}
+.menu small {
+  color: var(--muted);
+  font-size: 12px;
 }
 .doc-bar .pending {
   border-color: var(--warn);

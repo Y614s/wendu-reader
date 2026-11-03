@@ -3,6 +3,7 @@ import { onMounted, ref, shallowRef, watch } from 'vue'
 import type { DocumentRecord } from '../db'
 import { listDocuments } from '../db/documents'
 import { appState, deleteDocument, importText, openDocument, showToast } from '../app/store'
+import { exportOriginal } from '../export/original'
 
 // 最简书架：标题、导入时间、最近阅读；点开即读；可删除。完整书架（进度、标签）在第二版。
 
@@ -49,6 +50,15 @@ async function remove(d: DocumentRecord) {
   showToast(`已删除「${d.title}」`)
 }
 
+/** 书架上导出的是原文；笔记在阅读页的「导出」里 */
+async function exportDoc(d: DocumentRecord) {
+  try {
+    if ((await exportOriginal(d)) === 'downloaded') showToast(`已导出「${d.title}」`)
+  } catch (e) {
+    showToast(`导出失败：${String(e)}`, 4000)
+  }
+}
+
 watch(() => appState.docsVersion, refresh)
 onMounted(refresh)
 </script>
@@ -79,7 +89,8 @@ onMounted(refresh)
           <span class="title">{{ d.title }}</span>
           <span class="meta">导入 {{ fmt(d.importedAt) }} · 最近阅读 {{ fmt(d.lastReadAt) }}</span>
         </button>
-        <button class="del" @click="remove(d)">删除</button>
+        <button class="side-btn" @click="exportDoc(d)">导出</button>
+        <button class="side-btn del" @click="remove(d)">删除</button>
       </li>
     </ul>
   </div>
@@ -177,8 +188,10 @@ button:disabled {
   font-size: 13px;
   color: var(--muted);
 }
-.del {
+.side-btn {
   align-self: center;
+}
+.del {
   color: var(--danger);
 }
 </style>
