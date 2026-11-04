@@ -326,19 +326,17 @@ input[type='number'] {
   border-radius: var(--radius-m);
   background: var(--surface);
 }
-@media (orientation: portrait) {
-  .settings {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-  }
-  .side-nav {
-    position: static;
-    flex-direction: row;
-    overflow-x: auto;
-  }
-  .side-nav button {
-    flex: none;
-    gap: 6px;
-  }
+:root[data-layout='narrow'] .settings {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+:root[data-layout='narrow'] .side-nav {
+  position: static;
+  flex-direction: row;
+  overflow-x: auto;
+}
+:root[data-layout='narrow'] .side-nav button {
+  flex: none;
+  gap: 6px;
 }
 </style>

@@ -311,8 +311,14 @@ async function toggleSearch() {
     return
   }
   searchOpen.value = true
+  tocOpen.value = false
   await nextTick()
   searchInput.value?.focus()
+}
+
+function toggleToc() {
+  tocOpen.value = !tocOpen.value
+  if (tocOpen.value) closeSearch()
 }
 
 function closeSearch() {
@@ -563,6 +569,7 @@ watch(panel, (now) => {
   if (now) {
     dismissSelection()
     tapped.value = null
+    tocOpen.value = false
     closeSearch()
   }
   const left = anchorLeftBehind(lastAsk.value?.anchorId ?? null, now)
@@ -866,14 +873,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="reader" :class="{ 'with-panel': panel }">
+  <div class="reader" :class="{ 'with-panel': panel, 'overlay-open': searchOpen || tocOpen }">
     <div class="doc-col">
       <header class="doc-bar" :class="{ hidden: barHidden }">
         <button class="ghost act" aria-label="返回书架" @click="navigate('library')"><Icon name="back" /></button>
         <span class="doc-title">{{ doc?.title ?? '' }}<span v-if="currentHeading" class="cur-sec"> · {{ currentHeading.title }}</span></span>
         <template v-if="doc">
           <button v-if="pendingCount" class="chip tint" @click="panel = { mode: 'notes', focusPending: true }">待补充 {{ pendingCount }}</button>
-          <button class="ghost act" :class="{ on: tocOpen }" :disabled="!toc.length" aria-label="目录" @click="tocOpen = !tocOpen"><Icon name="list" /><span class="lbl">目录</span></button>
+          <button class="ghost act" :class="{ on: tocOpen }" :disabled="!toc.length" aria-label="目录" @click="toggleToc"><Icon name="list" /><span class="lbl">目录</span></button>
           <button class="ghost act" :class="{ on: searchOpen }" aria-label="搜索" @click="toggleSearch"><Icon name="search" /><span class="lbl">搜索</span></button>
           <button class="ghost act" aria-label="整篇提问" @click="openWholeAsk"><Icon name="ask" /><span class="lbl">提问</span></button>
           <button class="ghost act" aria-label="本文笔记" @click="panel = { mode: 'notes', focusPending: false }"><Icon name="note" /><span class="lbl">笔记</span></button>
@@ -1218,43 +1225,45 @@ onBeforeUnmount(() => {
   padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--panel-border);
 }
-/* 竖屏：面板变成底部抽屉 */
-@media (orientation: portrait) {
-  .reader.with-panel {
-    flex-direction: column;
-  }
-  .reader.with-panel .doc-col {
-    flex: 1 1 45%;
-  }
-  .side {
-    width: 100%;
-    max-width: none;
-    min-width: 0;
-    flex: 1 1 55%;
-    border-left: none;
-    border-top: 1px solid var(--panel-border);
-    border-radius: var(--radius-l) var(--radius-l) 0 0;
-    overflow: hidden;
-    /* 抽屉浮在正文上方的感觉 */
-    box-shadow: var(--shadow-3);
-    z-index: 12;
-    animation-name: slide-up;
-  }
-  .panel-head {
-    padding-top: 12px;
-  }
-  /* 顶部的把手条 */
-  .panel-head::before {
-    content: '';
-    position: absolute;
-    top: 6px;
-    left: 50%;
-    width: 40px;
-    height: 4px;
-    margin-left: -20px;
-    border-radius: 2px;
-    background: var(--panel-border);
-  }
+/* 窄屏：面板变成底部抽屉，判断方式见 src/app/layout.ts */
+/* 搜索和目录要用整块屏幕，抽屉先让开；只是隐藏，正在生成的回答不中断 */
+:root[data-layout='narrow'] .reader.overlay-open .side {
+  display: none;
+}
+:root[data-layout='narrow'] .reader.with-panel {
+  flex-direction: column;
+}
+:root[data-layout='narrow'] .reader.with-panel .doc-col {
+  flex: 1 1 45%;
+}
+:root[data-layout='narrow'] .side {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  flex: 1 1 55%;
+  border-left: none;
+  border-top: 1px solid var(--panel-border);
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
+  overflow: hidden;
+  /* 抽屉浮在正文上方的感觉 */
+  box-shadow: var(--shadow-3);
+  z-index: 12;
+  animation-name: slide-up;
+}
+:root[data-layout='narrow'] .panel-head {
+  padding-top: 12px;
+}
+/* 顶部的把手条 */
+:root[data-layout='narrow'] .panel-head::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: var(--panel-border);
 }
 .toolbar {
   position: fixed;
