@@ -69,7 +69,7 @@ async function onRestoreFile(e: Event) {
     const summary = `${t.documents.length} 篇文档、${t.highlights.length} 处划线、${t.notes.length} 条批注、${t.conversations.length} 条对话`
     const warn =
       restoreMode.value === 'replace'
-        ? `用备份替换本机数据？\n\n备份里有 ${summary}。\n本机现有的文档和笔记会被全部替换，无法撤销。`
+        ? `用备份替换本机数据？\n\n备份里有 ${summary}。\n本机现有的文档和笔记会被全部替换，无法撤销。AI 接口配置和 API Key 保留本机的。`
         : `把备份合并进来？\n\n备份里有 ${summary}。\n本机已有的同一条数据保留本机的，不会被覆盖。`
     if (!confirm(warn)) return
     const r = await restoreBackup(db, backup, restoreMode.value)
@@ -78,7 +78,7 @@ async function onRestoreFile(e: Event) {
       `恢复完成：新增 ${r.added.documents} 篇文档、${r.added.highlights} 处划线、${r.added.notes} 条批注、${r.added.conversations} 条对话` +
       (r.skipped ? `；本机已有的 ${r.skipped} 条保留不变` : '') +
       '。' +
-      (hasKey ? '' : '备份里不含 API Key，请在上方重新填写。')
+      (hasKey ? '' : '备份不含 AI 接口配置和 API Key，请在上方重新填写。')
     // 备份里的主题、预算等设置已写进数据库，重新加载让各处都按新数据显示；结果提示带到重新加载之后
     try {
       sessionStorage.setItem(RESTORE_MESSAGE_KEY, message)
@@ -156,14 +156,14 @@ onMounted(async () => {
         上次备份：<strong>{{ lastExportAt ? fmt(lastExportAt) : '还没有备份过' }}</strong>
         <span v-if="lastExportAt && Date.now() - lastExportAt > REMIND_AFTER_MS" class="warn">（超过 7 天了）</span>
       </p>
-      <p class="muted small">备份包含所有文档、划线、批注、对话和设置，<strong>不含 API Key</strong>。数据只在本机，换设备或重装前请先备份。</p>
+      <p class="muted small">备份包含所有文档、划线、批注、对话和阅读设置，<strong>不含 API Key 和 AI 接口配置</strong>，换设备后要重新填写。数据只在本机，换设备或重装前请先备份。只恢复自己导出的备份。</p>
       <div class="row">
         <button class="primary" :disabled="busy" @click="exportBackup">导出备份</button>
         <button :disabled="busy" @click="pickRestore('merge')">从备份恢复（合并）</button>
         <button :disabled="busy" class="danger" @click="pickRestore('replace')">从备份恢复（替换）</button>
       </div>
       <input ref="restoreInput" type="file" accept=".json,application/json" hidden @change="onRestoreFile" />
-      <p class="muted small">合并：同一条数据本机已有时保留本机的。替换：本机的文档和笔记全部换成备份里的，API Key 保留。</p>
+      <p class="muted small">合并：同一条数据本机已有时保留本机的。替换：本机的文档和笔记全部换成备份里的，API Key 和 AI 接口配置保留。</p>
       <p v-if="restoreMessage" class="result">{{ restoreMessage }}</p>
     </section>
 

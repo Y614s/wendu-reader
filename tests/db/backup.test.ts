@@ -75,7 +75,9 @@ describe('备份与恢复', () => {
     expect(text).not.toContain('secret-key')
     expect(backup.tables.settings.some((s) => s.key.startsWith('ai.key.'))).toBe(false)
     expect(backup.tables.settings.some((s) => s.key.startsWith('diag.'))).toBe(false)
-    expect(backup.tables.settings.some((s) => s.key === 'ai.config.deepseek')).toBe(true)
+    expect(backup.tables.settings.some((s) => s.key === 'ai.config.deepseek')).toBe(false)
+    expect(backup.tables.settings.some((s) => s.key === 'ai.provider')).toBe(false)
+    expect(backup.tables.settings.some((s) => s.key === 'reader.currentDocId')).toBe(true)
   })
 
   it('替换：保留本机的 Key，其余换成备份里的', async () => {
@@ -144,6 +146,60 @@ describe('备份与恢复', () => {
       await expect(restoreBackup(dst, b, 'replace')).rejects.toThrow()
       expect(await dump(dst)).toEqual(before)
     })
+  })
+})
+
+describe('恶意备份', () => {
+  const ATTACKER = { baseURL: 'https://attacker.example/v1', model: 'm' }
+
+  async function maliciousBackup() {
+    const b = await createBackup(src)
+    b.tables.settings.push({ key: 'ai.config.deepseek', value: ATTACKER }, { key: 'ai.provider', value: 'custom' }, { key: 'ai.key.deepseek', value: 'x' })
+    return parseBackup(JSON.stringify(b))
+  }
+
+  it.each(['replace', 'merge'] as const)('%s：不能改写本机的接口地址和 Key', async (mode) => {
+    const local = { baseURL: 'https://api.deepseek.com', model: 'mine' }
+    await dst.settings.bulkPut([
+      { key: 'ai.config.deepseek', value: local },
+      { key: 'ai.provider', value: 'deepseek' },
+      { key: 'ai.key.deepseek', value: 'local-key' },
+    ])
+    await restoreBackup(dst, await maliciousBackup(), mode)
+    expect((await dst.settings.get('ai.config.deepseek'))?.value).toEqual(local)
+    expect((await dst.settings.get('ai.provider'))?.value).toBe('deepseek')
+    expect((await dst.settings.get('ai.key.deepseek'))?.value).toBe('local-key')
+  })
+
+  it.each(['replace', 'merge'] as const)('%s：本机没有配置时也不写入备份里的接口地址', async (mode) => {
+    await restoreBackup(dst, await maliciousBackup(), mode)
+    expect(await dst.settings.get('ai.config.deepseek')).toBeUndefined()
+    expect(await dst.settings.get('ai.provider')).toBeUndefined()
+  })
+
+  it('白名单里的设置取值不对时拒绝恢复', async () => {
+    const b = await createBackup(src)
+    b.tables.settings.push({ key: 'ui.theme', value: '<img>' })
+    expect(() => parseBackup(JSON.stringify(b))).toThrowError(/「value」/)
+  })
+
+  it('对话消息结构不对、枚举取值不对时拒绝恢复', async () => {
+    const b = await createBackup(src)
+    const conv = b.tables.conversations[0]
+    const withConv = (c: object) => JSON.stringify({ ...b, tables: { ...b.tables, conversations: [c] } })
+    expect(() => parseBackup(withConv({ ...conv, messages: [{ role: 'user' }] }))).toThrowError(/「messages」/)
+    expect(() => parseBackup(withConv({ ...conv, messages: [null] }))).toThrowError(/「messages」/)
+    expect(() => parseBackup(withConv({ ...conv, messages: [{ role: 'x', content: '', createdAt: 0 }] }))).toThrowError(/「messages」/)
+    expect(() => parseBackup(withConv({ ...conv, kind: 'x' }))).toThrowError(/「kind」/)
+    expect(() => parseBackup(withConv({ ...conv, status: 'x' }))).toThrowError(/「status」/)
+  })
+
+  it('v0.1.0 导出的备份（设置里带接口配置）仍能恢复，只是忽略那些设置', async () => {
+    const old = await createBackup(src)
+    old.tables.settings.push({ key: 'ai.config.deepseek', value: { baseURL: 'https://api.deepseek.com', model: 'm' } })
+    await restoreBackup(dst, parseBackup(JSON.stringify(old)), 'replace')
+    expect(await dst.documents.count()).toBe(1)
+    expect(await dst.settings.get('ai.config.deepseek')).toBeUndefined()
   })
 })
 
