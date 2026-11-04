@@ -50,7 +50,8 @@ export default defineConfig({
       manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff,woff2,ttf,md,svg,png,ico}'],
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        // Mermaid 的分包也全部预缓存，带图文档离线也能看；首次打开在后台下载，不影响首屏
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
       },

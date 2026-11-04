@@ -6,6 +6,7 @@ import { shouldRemindBackup } from '../db/backup'
 import { appState, showToast } from '../app/store'
 import { navigate } from '../app/router'
 import { prefs } from '../app/prefs'
+import { resolvedTheme } from '../app/theme'
 import { renderMarkdown, type CodeHighlighter } from '../reader/markdown'
 import { getCodeHighlighter } from '../reader/highlighter'
 import { readerState } from '../reader/state'
@@ -13,6 +14,7 @@ import { collectHeadings, headingAt, sectionStarts, type Heading } from '../read
 import { clampPosition, progressOf, scrollToPosition, topVisiblePosition } from '../reader/position'
 import { buildNoteGroups } from '../reader/notes'
 import { findMatches, firstMatchFrom, stepMatch, type SearchMatch } from '../reader/search'
+import { renderMermaidBlocks } from '../reader/mermaid'
 import type { TextMap } from '../textmap'
 import { hitTest, paint, positionFromPoint, supportsCustomHighlight, type PaintItem } from '../highlight'
 import {
@@ -151,6 +153,18 @@ async function renderDoc() {
   headings.value = collectHeadings(map)
   await refreshAnnotations()
   if (props.active) restorePosition()
+  void renderDiagrams()
+}
+
+let diagramRun = 0
+
+/** 画 Mermaid 图。图比源码高或矮，画完滚回原来的字符。换文档或重新渲染后，上一轮作废 */
+async function renderDiagrams() {
+  const root = contentEl.value
+  if (!root || !props.active) return
+  const run = ++diagramRun
+  const changed = await renderMermaidBlocks(root, resolvedTheme.value, () => run !== diagramRun)
+  if (changed && run === diagramRun) keepPositionAfterReflow()
 }
 
 /** 只在页面可见时恢复位置：隐藏时量不到元素的位置 */
@@ -164,6 +178,7 @@ function restorePosition() {
     // 期间又重新渲染过、换了要恢复的位置，以新的为准
     if (!map || !contentEl.value || restorePending !== pos) return
     restorePending = null
+    anchorPos = pos
     scrollToPosition(map, contentEl.value, pos)
     readerState.restoredPosition = pos
     onScroll()
@@ -696,6 +711,8 @@ watch(
   (id) => void enqueueRender(() => loadDoc(id)),
 )
 
+watch(resolvedTheme, () => void renderDiagrams())
+
 watch(
   () => [prefs.fontSize, prefs.lineHeight, prefs.pageWidth],
   () => requestAnimationFrame(keepPositionAfterReflow),
@@ -704,8 +721,10 @@ watch(
 watch(
   () => props.active,
   (on) => {
-    if (on) restorePosition()
-    else {
+    if (on) {
+      restorePosition()
+      void renderDiagrams()
+    } else {
       closeOverlays()
       void savePositionNow()
     }

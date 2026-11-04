@@ -20,7 +20,8 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT'])
 
 export type Segment =
   | { kind: 'text'; start: number; end: number; node: Text }
-  | { kind: 'math'; start: number; end: number; node: Element; tex: string; display: boolean }
+  /** 原子节点：公式或 Mermaid 图，只占 1 个字符。tex 是原始源码 */
+  | { kind: 'math'; start: number; end: number; node: Element; tex: string; display: boolean; mermaid?: boolean }
   | { kind: 'break'; start: number; end: number }
 
 export interface DomPoint {
@@ -35,11 +36,13 @@ export interface TextRange {
   expanded: boolean
 }
 
-function isMath(el: Element): boolean {
-  return el.classList.contains('katex')
+/** 公式和 Mermaid 图都整体算 1 个字符，不进入内部（SVG 里有大量 text、style 节点） */
+function isAtom(el: Element): boolean {
+  return el.classList.contains('katex') || el.classList.contains('mermaid-block')
 }
 
-function texOf(el: Element): { tex: string; display: boolean } {
+function sourceOf(el: Element): { tex: string; display: boolean; mermaid?: boolean } {
+  if (el.classList.contains('mermaid-block')) return { tex: el.getAttribute('data-mermaid') ?? '', display: true, mermaid: true }
   const host = el.closest('[data-tex]')
   return {
     tex: host?.getAttribute('data-tex') ?? '',
@@ -47,11 +50,11 @@ function texOf(el: Element): { tex: string; display: boolean } {
   }
 }
 
-/** 包含该节点的 .katex 元素（节点在公式内部时） */
+/** 包含该节点的公式或 Mermaid 容器（节点在它们内部时） */
 function mathAncestor(node: Node, root: Node): Element | null {
   let cur: Node | null = node
   while (cur && cur !== root) {
-    if (cur.nodeType === Node.ELEMENT_NODE && isMath(cur as Element)) return cur as Element
+    if (cur.nodeType === Node.ELEMENT_NODE && isAtom(cur as Element)) return cur as Element
     cur = cur.parentNode
   }
   return null
@@ -97,14 +100,10 @@ export class TextMap {
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           const el = child as Element
           if (SKIP_TAGS.has(el.tagName)) continue
-          if (isMath(el)) {
-            const { tex, display } = texOf(el)
-            append({ kind: 'math', start: 0, end: 0, node: el, tex, display }, MATH_CHAR)
-            continue
-          }
           const block = BLOCK_TAGS.has(el.tagName)
           if (block) pendingBreak = true
-          walk(el)
+          if (isAtom(el)) append({ kind: 'math', start: 0, end: 0, node: el, ...sourceOf(el) }, MATH_CHAR)
+          else walk(el)
           if (block) pendingBreak = true
         }
       }
@@ -220,7 +219,7 @@ export class TextMap {
     return s && s.kind === 'math' && s.start === pos ? s : null
   }
 
-  /** 取一段文字，公式换回原始 TeX（行内 $…$，块级 $$…$$）。 */
+  /** 取一段文字，公式换回原始 TeX（行内 $…$，块级 $$…$$），Mermaid 图换回代码块。 */
   textWithTex(start: number, end: number): string {
     let out = ''
     for (let i = start; i < end; i++) {
@@ -231,6 +230,7 @@ export class TextMap {
       }
       const m = this.mathAt(i)
       if (!m) out += ch
+      else if (m.mermaid) out += `\`\`\`mermaid\n${m.tex}\n\`\`\``
       else out += m.display ? `$$${m.tex}$$` : `$${m.tex}$`
     }
     return out

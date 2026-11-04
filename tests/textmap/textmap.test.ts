@@ -129,6 +129,54 @@ describe('TextMap 公式选区', () => {
   })
 })
 
+describe('Mermaid', () => {
+  const md = '图前。\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n图后。'
+
+  it('容器只占 1 个字符，前后各换一行', () => {
+    const map = TextMap.build(mountMd(md))
+    expect(map.text).toBe(`图前。\n${MATH_CHAR}\n图后。`)
+  })
+
+  it('画成 SVG 后映射层不变，不进入 SVG 内部', () => {
+    const root = mountMd(md)
+    const before = TextMap.build(root).text
+    const block = root.querySelector('.mermaid-block')!
+    block.innerHTML = '<div class="mermaid-diagram"><svg><style>.a{}</style><text>A</text><text>B</text></svg></div>'
+    expect(TextMap.build(root).text).toBe(before)
+  })
+
+  it('还原文字时换回 mermaid 代码块', () => {
+    const map = TextMap.build(mountMd(md))
+    expect(map.textWithTex(0, map.text.length)).toBe('图前。\n```mermaid\ngraph TD\n  A --> B\n```\n图后。')
+  })
+
+  it('源码里的特殊字符原样还原', () => {
+    const src = 'graph TD\n  A["a < b & c"] --> B'
+    const map = TextMap.build(mountMd('```mermaid\n' + src + '\n```'))
+    expect(map.textWithTex(0, 1)).toContain(src)
+  })
+
+  it('选区边界在图内部时扩展到整个容器', () => {
+    const root = mountMd(md)
+    const block = root.querySelector('.mermaid-block')!
+    block.innerHTML = '<div class="mermaid-diagram"><svg><text>A</text></svg></div>'
+    const map = TextMap.build(root)
+    const inner = block.querySelector('text')!.firstChild!
+    const range = document.createRange()
+    range.setStart(inner, 0)
+    range.setEnd(inner, 1)
+    const r = map.fromRange(range)!
+    expect(r.expanded).toBe(true)
+    expect(map.text.slice(r.start, r.end)).toBe(MATH_CHAR)
+  })
+
+  it('普通代码块不受影响', () => {
+    const root = mountMd('```python\nx = 1\n```')
+    expect(root.querySelector('.mermaid-block')).toBeNull()
+    expect(TextMap.build(root).text).toContain('x = 1')
+  })
+})
+
 describe('行内公式不误判', () => {
   it('普通美元符号、跨行内代码、跨行都不当成公式', () => {
     for (const md of ['花费 $100，读取 $HOME 变量', '价格 $5 和 `a$b` 两处', '第一行 $x\n第二行 y$ 结束', '正则 `/^a$/` 与 `/^b$/`']) {

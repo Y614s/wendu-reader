@@ -225,9 +225,32 @@ body,
   overflow-y: hidden;
 }
 
+.md .mermaid-block {
+  margin: 1em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.md .mermaid-block .mermaid-source {
+  text-align: left;
+}
+
+.md .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.md .mermaid-error {
+  margin: 0.2em 0;
+  color: var(--warn);
+  font-size: 14px;
+  text-align: left;
+}
+
 /* 公式整体作为一个单位选中：长按公式任意位置就选中整个公式，拖动选区经过公式时也整块带上。
    KaTeX 把公式拆成很多小片段，不加这一条，安卓上长按只会选中其中一点。 */
-.md .katex {
+.md .katex,
+.md .mermaid-block {
   -webkit-user-select: all;
   user-select: all;
 }
@@ -345,7 +368,8 @@ body,
 
 /* 不支持时回退为 <mark> 包裹 */
 mark.wendu-hl,
-.katex.wendu-hl {
+.katex.wendu-hl,
+.mermaid-block.wendu-hl {
   background-color: var(--hl-bg);
   color: inherit;
 }
@@ -357,7 +381,8 @@ mark.wendu-ask {
   text-underline-offset: 4px;
 }
 
-.katex.wendu-ask {
+.katex.wendu-ask,
+.mermaid-block.wendu-ask {
   border-bottom: 2px dashed var(--ask-line);
 }
 
@@ -374,7 +399,8 @@ mark.wendu-search-cur,
 }
 
 mark.wendu-flash,
-.katex.wendu-flash {
+.katex.wendu-flash,
+.mermaid-block.wendu-flash {
   background-color: var(--flash-bg);
   color: inherit;
 }

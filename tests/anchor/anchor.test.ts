@@ -61,6 +61,34 @@ describe('锚点重新定位', () => {
     expect(locate(edited, sel)).toEqual({ status: 'orphan' })
   })
 
+  describe('从 v0.1.0 升级：Mermaid 源码以前按文字计入映射层', () => {
+    // 把 mermaid 代码块改成普通代码块，就是 v0.1.0 看到的文本
+    const OLD = SAMPLE.replace('```mermaid', '```text')
+    const pick = (text: string, s: string) => {
+      const start = text.indexOf(s)
+      expect(start).toBeGreaterThan(-1)
+      return createSelector(text, start, start + s.length)
+    }
+
+    it('图前、图后、紧挨着图的锚点都能找回', () => {
+      const oldText = sampleText(OLD)
+      const newText = sampleText()
+      expect(oldText).not.toBe(newText)
+      for (const s of ['扩容时通常把容量翻倍', '第一版按普通代码块显示', '这一段用来测试跨段落选区']) {
+        const r = locate(newText, pick(oldText, s))
+        expect(r.status, s).not.toBe('orphan')
+        if (r.status !== 'orphan') expect(newText.slice(r.start, r.end)).toBe(s)
+      }
+    })
+
+    it('落在 Mermaid 代码内部的锚点变成孤立，不报错、不改数据', () => {
+      const sel = pick(sampleText(OLD), '父、叔染黑，祖父染红')
+      const quote = sel.quote
+      expect(locate(sampleText(), sel)).toEqual({ status: 'orphan' })
+      expect(sel.quote).toBe(quote)
+    })
+  })
+
   it('前后文各存 32 个字符', () => {
     const text = sampleText()
     const start = text.indexOf(REPEATED)

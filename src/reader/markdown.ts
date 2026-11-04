@@ -92,6 +92,16 @@ export function createMarkdown(highlight?: CodeHighlighter): MarkdownItInstance 
     }
     return defaultLink(tokens, idx, opts, env, self)
   }
+  // Mermaid 代码块输出成带源码的容器，由 mermaid.ts 画图。容器在映射层里只占 1 个字符；
+  // AI 回答不画图，容器里的源码就是普通代码块
+  const defaultFence = md.renderer.rules.fence!
+  md.renderer.rules.fence = (tokens, idx, opts, env, self) => {
+    const token = tokens[idx]
+    if (token.info.trim().split(/\s+/)[0].toLowerCase() !== 'mermaid') return defaultFence(tokens, idx, opts, env, self)
+    const src = token.content.replace(/\n$/, '')
+    const esc = md.utils.escapeHtml(src)
+    return `<div class="mermaid-block" data-mermaid="${esc}"><pre class="mermaid-source"><code>${esc}</code></pre></div>\n`
+  }
   // 外部图片不自动加载：打开文档就发请求，图片服务器能看到 IP 和打开时间。
   // 占位的文字由 CSS 显示，不产生文本节点，文本映射层和锚点位置不受影响。
   const defaultImage = md.renderer.rules.image ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts))
