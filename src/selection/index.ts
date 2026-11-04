@@ -2,7 +2,8 @@ import { reactive } from 'vue'
 import type { TextMap } from '../textmap'
 
 // 选区缓存。安卓上点底部按钮会先清掉选中状态，所以：
-// 只在正文出现非空选区时更新缓存；选区变空不覆盖；取消或切换文档时才清除。
+// 只在正文出现非空选区时更新缓存；选区变空不覆盖；用完、取消或切换文档时才清除。
+// 清除后系统可能晚一点才真正收起选区，这期间同一选区再次上报要忽略，否则工具栏又冒出来。
 
 export interface CachedSelection {
   start: number
@@ -30,8 +31,19 @@ export const selectionState = reactive({
   lastClick: null as ToolbarClickRecord | null,
 })
 
+const DISMISS_MS = 800
+let dismissed: { start: number; end: number; at: number } | null = null
+
 export function clearSelectionCache(): void {
   selectionState.cache = null
+}
+
+/** 用完或放弃当前选区：清缓存、收起系统选区，工具栏随之消失 */
+export function dismissSelection(): void {
+  const c = selectionState.cache
+  if (c) dismissed = { start: c.start, end: c.end, at: Date.now() }
+  selectionState.cache = null
+  document.getSelection()?.removeAllRanges()
 }
 
 function liveSelectionIn(root: Element): Range | null {
@@ -47,9 +59,14 @@ export function watchSelection(getMap: () => TextMap | null): () => void {
     const map = getMap()
     if (!map) return
     const range = liveSelectionIn(map.root)
-    if (!range) return
+    if (!range) {
+      dismissed = null
+      return
+    }
     const r = map.fromRange(range)
     if (!r || r.end <= r.start) return
+    if (dismissed && r.start === dismissed.start && r.end === dismissed.end && Date.now() - dismissed.at < DISMISS_MS) return
+    dismissed = null
     const plain = map.text.slice(r.start, r.end)
     if (!plain.trim()) return
     const cache: CachedSelection = {

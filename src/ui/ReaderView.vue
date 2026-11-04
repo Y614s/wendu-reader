@@ -34,7 +34,7 @@ import {
 } from '../anchor/store'
 import { anchorLeftBehind } from '../anchor/cleanup'
 import type { AnchorRecord } from '../db'
-import { clearSelectionCache, recordToolbarClick, selectionState, watchSelection, type CachedSelection } from '../selection'
+import { clearSelectionCache, dismissSelection, recordToolbarClick, selectionState, watchSelection, type CachedSelection } from '../selection'
 import { buildContext, type ContextScope } from '../ai/context'
 import type { ChatMessageInput } from '../ai/client'
 import { sendToApp } from '../share'
@@ -354,18 +354,13 @@ function takeCache(button: string): CachedSelection | null {
   return c
 }
 
-function finishSelection() {
-  clearSelectionCache()
-  document.getSelection()?.removeAllRanges()
-}
-
 async function onHighlight(color: HighlightColor) {
   const c = takeCache('划线')
   if (!c || !doc.value || !map) return
   const anchor = await saveAnchor(doc.value, map.text, c.start, c.end)
   await addHighlight(anchor.id, color)
   await setLastColor(color)
-  finishSelection()
+  dismissSelection()
   await refreshAnnotations()
 }
 
@@ -375,7 +370,7 @@ async function onAnnotate() {
   // 批注 = 划线 + 一段文字；先存锚点和划线，取消写批注也保留划线
   const anchor = await saveAnchor(doc.value, map.text, c.start, c.end)
   await addHighlight(anchor.id, prefs.lastColor)
-  finishSelection()
+  dismissSelection()
   await refreshAnnotations()
   editor.value = { anchorId: anchor.id, quote: c.text, note: null }
 }
@@ -386,7 +381,7 @@ async function onAsk() {
   // 打开提问面板之前先把选区存成锚点
   const anchor = await saveAnchor(doc.value, map.text, c.start, c.end)
   panel.value = { mode: 'ask', anchorId: anchor.id, quote: c.text, focus: { start: c.start, end: c.end } }
-  finishSelection()
+  dismissSelection()
   await refreshAnnotations()
 }
 
@@ -394,7 +389,7 @@ async function onSendToApp() {
   const c = takeCache('发到 App')
   if (!c || !doc.value || !map) return
   const anchor = await saveAnchor(doc.value, map.text, c.start, c.end)
-  finishSelection()
+  dismissSelection()
   const { result } = await sendToApp({ doc: doc.value, anchorId: anchor.id, section: sectionOf(c.start), quote: c.text })
   await refreshAnnotations()
   if (result === 'copied') showToast('当前环境不支持分享，已复制到剪贴板；已建好待补充记录')
@@ -407,13 +402,13 @@ async function onCopy() {
   if (!c || !doc.value) return
   const section = sectionOf(c.start)
   const text = `${c.text}\n\n——《${doc.value.title}》${section ? ' · ' + section : ''}`
-  finishSelection()
+  dismissSelection()
   showToast((await copyText(text)) ? '已复制原文，附带文档名和章节' : '复制失败')
 }
 
 function onCancel() {
   recordToolbarClick('取消', contentEl.value)
-  finishSelection()
+  dismissSelection()
 }
 
 // ---------- 点击正文：已有划线、边缘翻页 ----------
@@ -426,10 +421,13 @@ function closeOverlays() {
 
 /** 点到导出菜单以外的地方时收起菜单 */
 function onDocPointerDown(e: PointerEvent) {
-  if (!(e.target as Element).closest?.('.menu-wrap')) {
+  const target = e.target as Element
+  if (!target.closest?.('.menu-wrap')) {
     exportMenu.value = false
     typoMenu.value = false
   }
+  // 按在正文和工具栏以外的地方，就是不再要这个选区了
+  if (selectionState.cache && !target.closest?.('.toolbar') && !contentEl.value?.contains(target)) dismissSelection()
 }
 
 function onContentClick(e: MouseEvent) {
@@ -441,6 +439,11 @@ function onContentClick(e: MouseEvent) {
   }
   const sel = document.getSelection()
   if (sel && !sel.isCollapsed) return
+  // 选区已经被这一下点没了，工具栏跟着收起；这一下不再当作点击划线
+  if (selectionState.cache) {
+    dismissSelection()
+    return
+  }
   if ((e.target as Element).closest('a')) return
   const pos = positionFromPoint(map, e.clientX, e.clientY)
   const hits = pos === null ? [] : hitTest(paintItems(), pos).filter((h) => h.kind === 'highlight' || h.kind === 'ask')
@@ -529,6 +532,11 @@ async function cleanupAnchor(anchorId: string) {
 
 // 切到「笔记」再切回来不算离开；关闭侧栏、换到另一处原文或整篇提问时才检查空锚点
 watch(panel, (now) => {
+  // 不管从哪里打开面板，底部工具栏都让位
+  if (now) {
+    dismissSelection()
+    tapped.value = null
+  }
   const left = anchorLeftBehind(lastAsk.value?.anchorId ?? null, now)
   if (now?.mode === 'ask') lastAsk.value = now
   if (left) void cleanupAnchor(left)
