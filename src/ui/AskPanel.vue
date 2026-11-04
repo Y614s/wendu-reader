@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { db, newId, type ConversationRecord, type DocumentRecord, type NoteRecord } from '../db'
 import { ChatError, configProblem, streamChat, type ChatMessageInput } from '../ai/client'
-import type { ContextResult, ContextScope } from '../ai/context'
+import { quickPrompts, type ContextResult, type ContextScope } from '../ai/context'
 import { historyForRequest } from '../ai/history'
 import { getProviderConfig, getSelectedProviderId, presetOf } from '../ai/providers'
 import { renderAnswer, splitAnswerBlocks } from '../reader/answer'
@@ -38,6 +38,7 @@ const shown = computed(() =>
     ? props.conversations.filter((c) => c.anchorId === props.anchorId)
     : props.conversations.filter((c) => c.anchorId === null && c.kind === 'sidebar'),
 )
+const presets = computed(() => quickPrompts(props.anchorId === null))
 const sidebarConv = computed(() => shown.value.filter((c) => c.kind === 'sidebar').at(-1) ?? null)
 const savedTexts = computed(() => new Set(props.notes.filter((n) => n.anchorId === props.anchorId && n.source === 'ai').map((n) => n.text)))
 
@@ -135,6 +136,13 @@ async function ask() {
   scrollToEnd()
 }
 
+/** 点一下直接发送，不用调键盘 */
+function askPreset(text: string) {
+  if (streaming.value) return
+  question.value = text
+  void ask()
+}
+
 function stop() {
   abort?.abort()
 }
@@ -189,6 +197,9 @@ onBeforeUnmount(stop)
         <span class="muted">上下文</span>
         <button :class="{ on: scope === 'section' }" @click="scope = 'section'">本节</button>
         <button :class="{ on: scope === 'full' }" @click="scope = 'full'">全文</button>
+      </div>
+      <div class="presets">
+        <button v-for="p in presets" :key="p" :disabled="streaming" @click="askPreset(p)">{{ p }}</button>
       </div>
       <div class="input-row">
         <textarea
@@ -317,6 +328,19 @@ onBeforeUnmount(stop)
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.presets button {
+  padding: 4px 10px;
+  border-color: var(--panel-border);
+  border-radius: 14px;
+  color: var(--accent);
+  font-size: 14px;
 }
 .input-row {
   display: flex;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildContext, estimateTokens, splitBlocks, type ContextRequest } from '../../src/ai/context'
+import { buildContext, estimateTokens, quickPrompts, splitBlocks, type ContextRequest } from '../../src/ai/context'
 
 // 三节，每节三段；每段 100 个汉字左右，方便估算
 const para = (tag: string) => `${tag}` + '内容'.repeat(50)
@@ -31,6 +31,15 @@ describe('estimateTokens', () => {
     expect(estimateTokens('红黑树')).toBe(3)
     expect(estimateTokens('abcdefgh')).toBe(2)
     expect(estimateTokens('红黑 tree')).toBe(2 + 2)
+  })
+})
+
+describe('quickPrompts', () => {
+  it('针对原文和整篇提问各有一组，整篇时不出现「这段」「前文」', () => {
+    expect(quickPrompts(false)).toEqual(['解释这段', '举个例子', '说得更通俗', '和前文有什么关系', '出一道自测题'])
+    const whole = quickPrompts(true)
+    expect(whole).toHaveLength(5)
+    expect(whole.join()).not.toMatch(/这段|前文/)
   })
 })
 
