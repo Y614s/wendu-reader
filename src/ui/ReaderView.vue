@@ -596,7 +596,13 @@ async function saveAnswerAsNote(text: string) {
 
 function jumpToAnchor(anchorId: string) {
   const l = located.value.find((x) => x.anchor.id === anchorId)
-  if (!l || !map || !contentEl.value) return
+  if (!l || !map || !contentEl.value) {
+    showToast('这条笔记的原文已经找不到了')
+    return
+  }
+  // 从全局笔记页跳过来时，不再恢复上次读到的位置；图画完后也回到这里
+  restorePending = null
+  anchorPos = l.start
   const el = contentEl.value
   const rect = map.toRange(l.start, l.end).getBoundingClientRect()
   const box = el.getBoundingClientRect()
@@ -729,6 +735,26 @@ watch(
 
 watch(resolvedTheme, () => void renderDiagrams())
 
+// 全局笔记页的跳转。排进渲染队列，保证目标文档已经打开；页面可见时才量得到位置
+watch(
+  () => [appState.jump, props.active] as const,
+  ([jump, active]) => {
+    if (!jump || !active) return
+    void enqueueRender(async () => {
+      await nextTick()
+      appState.jump = null
+      jumpToAnchor(jump.anchorId)
+      if (jump.ask) openAnchorPanel(jump.anchorId)
+    })
+  },
+)
+
+// 文档内容被更新为新版本：重新加载，位置已由迁移写好
+watch(
+  () => appState.sourceVersion,
+  () => void enqueueRender(() => loadDoc(appState.currentDocId)),
+)
+
 watch(
   () => [prefs.fontSize, prefs.lineHeight, prefs.pageWidth],
   () => requestAnimationFrame(keepPositionAfterReflow),
@@ -740,6 +766,8 @@ watch(
     if (on) {
       restorePosition()
       void renderDiagrams()
+      // 全局笔记页可能新增了问答
+      void refreshAnnotations()
     } else {
       closeOverlays()
       void savePositionNow()

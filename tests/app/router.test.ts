@@ -7,6 +7,7 @@ describe('parseHash', () => {
     expect(parseHash('#/diagnostics')).toBe('diagnostics')
     expect(parseHash('#settings')).toBe('settings')
     expect(parseHash('#/library')).toBe('library')
+    expect(parseHash('#/notes')).toBe('notes')
   })
 
   it('未知或空 hash 回到阅读页', () => {
