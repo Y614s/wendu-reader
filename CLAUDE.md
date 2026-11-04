@@ -64,7 +64,7 @@ Dexie 表：
 
 - `documents`：`id`（UUID）、`title`、`source`（md 原文）、`hash`、`importedAt`、`lastReadAt`、`readingPosition`、`progress`（可选，0～1）
 - `anchors`：`id`、`docId`、`docHash`、`quote`、`prefix`、`suffix`、`start`、`end`（`start`/`end` 是映射层里的字符位置）
-- `highlights`：`id`、`anchorId`、`color`（第一版只用一种颜色，但字段必须有）、`createdAt`
+- `highlights`：`id`、`anchorId`、`color`（`yellow` | `blue` | `green` | `red`，不认识的值按黄色显示）、`createdAt`
 - `notes`：`id`、`anchorId`、`source`（可选，`annotation` | `ai`）、`text`、`createdAt`、`updatedAt`
 - `conversations`：`id`、`docId`、`anchorId`（整篇提问时为空）、`kind`（`sidebar` | `external`）、`status`（`done` | `pending`，pending 即待补充记录）、`messages`、`provider`、`model`、`createdAt`
 - `settings`：键值对。API Key 也存这里，但**永远不进备份、不进日志**。能进出备份的设置走白名单（`src/db/backup.ts`），新增设置默认留在本机；AI 接口配置不进备份。
@@ -72,7 +72,7 @@ Dexie 表：
 规则：
 - schema 变更只能新增版本号并写迁移，不能修改已发布的版本。已经有人在用，迁移出错会丢别人的数据。
 - 所有 id 用 `crypto.randomUUID()`。
-- 同名文档导入时保留两份，不覆盖。
+- 同名文档导入时保留两份，不覆盖。更新文档内容走书架的「更新」，先预览再迁移划线，找不到的锚点保留。
 
 ## 文本映射层（最关键，必须有单元测试）
 
