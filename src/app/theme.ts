@@ -6,7 +6,7 @@ import { getSetting, setSetting } from '../db'
 export type ThemeSetting = 'light' | 'sepia' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'sepia' | 'dark'
 
-const THEME_COLOR: Record<ResolvedTheme, string> = { light: '#ffffff', sepia: '#f6efdf', dark: '#0d1117' }
+const THEME_COLOR: Record<ResolvedTheme, string> = { light: '#fbf7ef', sepia: '#eadfc8', dark: '#1b1815' }
 
 const KEY = 'ui.theme'
 const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null

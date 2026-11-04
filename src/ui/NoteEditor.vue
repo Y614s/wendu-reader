@@ -72,23 +72,4 @@ textarea {
 .spacer {
   flex: 1;
 }
-button {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 15px;
-}
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-button.danger {
-  color: var(--danger);
-}
-button:disabled {
-  opacity: 0.5;
-}
 </style>

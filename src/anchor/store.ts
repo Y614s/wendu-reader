@@ -82,6 +82,31 @@ export async function removeHighlightAndNotes(anchorId: string): Promise<void> {
   await deleteAnchorIfUnused(anchorId)
 }
 
+export interface RemovedAnnotations {
+  anchors: AnchorRecord[]
+  highlights: HighlightRecord[]
+  notes: NoteRecord[]
+}
+
+/** 和 removeHighlightAndNotes 一样，但先留一份，给「撤销」用 */
+export async function removeHighlightsForUndo(anchorIds: string[]): Promise<RemovedAnnotations> {
+  const removed: RemovedAnnotations = {
+    anchors: await db.anchors.where('id').anyOf(anchorIds).toArray(),
+    highlights: await db.highlights.where('anchorId').anyOf(anchorIds).toArray(),
+    notes: await db.notes.where('anchorId').anyOf(anchorIds).toArray(),
+  }
+  for (const id of anchorIds) await removeHighlightAndNotes(id)
+  return removed
+}
+
+export async function restoreRemoved(r: RemovedAnnotations): Promise<void> {
+  await db.transaction('rw', [db.anchors, db.highlights, db.notes], async () => {
+    await db.anchors.bulkPut(r.anchors)
+    await db.highlights.bulkPut(r.highlights)
+    await db.notes.bulkPut(r.notes)
+  })
+}
+
 /** 删除一条对话（侧栏问或待补充记录）。锚点要不要一起清理由调用方决定，面板还开着时不能删 */
 export async function deleteConversation(id: string): Promise<void> {
   await db.conversations.delete(id)

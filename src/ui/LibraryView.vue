@@ -5,6 +5,7 @@ import { applyMigration, planMigration, type MigrationPlan } from '../anchor/mig
 import { listDocuments, loadDocStats, type DocStats } from '../db/documents'
 import { parseTags } from '../reader/markdown'
 import { appState, deleteDocument, importText, openDocument, showToast } from '../app/store'
+import { confirmDialog } from '../app/dialog'
 import { exportOriginal } from '../export/original'
 import { isLikelyMarkdown, isTooLarge } from '../platform/incoming'
 
@@ -73,7 +74,8 @@ async function importPasted() {
 }
 
 async function remove(d: DocumentRecord) {
-  if (!confirm(`删除「${d.title}」？\n\n它的划线、批注和对话会一起删除，无法恢复。`)) return
+  const ok = await confirmDialog({ title: `删除「${d.title}」？`, message: '它的划线、批注和对话会一起删除，无法恢复。', confirmText: '删除', danger: true })
+  if (!ok) return
   await deleteDocument(d.id)
   showToast(`已删除「${d.title}」`)
 }
@@ -241,19 +243,6 @@ onMounted(refresh)
 .head h2 {
   margin-right: auto;
 }
-button {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 15px;
-}
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
 .paste {
   display: flex;
   flex-direction: column;
@@ -267,9 +256,6 @@ button.primary {
 .paste-row input {
   flex: 1;
   min-width: 0;
-}
-button:disabled {
-  opacity: 0.5;
 }
 .paste input,
 .paste textarea {

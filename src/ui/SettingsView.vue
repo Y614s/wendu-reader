@@ -6,6 +6,7 @@ import PromptSettings from './PromptSettings.vue'
 import { prefs, setColorName, setContextBudget, setEdgeTap } from '../app/prefs'
 import { DEFAULT_COLOR_NAMES, HIGHLIGHT_COLORS, MAX_COLOR_NAME } from '../highlight/colors'
 import { showToast } from '../app/store'
+import { confirmDialog } from '../app/dialog'
 import { db, getSetting, setSetting } from '../db'
 import { BackupError, clearAllData, createBackup, parseBackup, restoreBackup, REMIND_AFTER_MS, type RestoreMode } from '../db/backup'
 import { getProviderSettings, PROVIDER_PRESETS } from '../ai/providers'
@@ -63,11 +64,16 @@ async function onRestoreFile(e: Event) {
     const backup = parseBackup(await file.text())
     const t = backup.tables
     const summary = `${t.documents.length} 篇文档、${t.highlights.length} 处划线、${t.notes.length} 条批注、${t.conversations.length} 条对话`
-    const warn =
-      restoreMode.value === 'replace'
-        ? `用备份替换本机数据？\n\n备份里有 ${summary}。\n本机现有的文档和笔记会被全部替换，无法撤销。AI 接口配置和 API Key 保留本机的。`
-        : `把备份合并进来？\n\n备份里有 ${summary}。\n本机已有的同一条数据保留本机的，不会被覆盖。`
-    if (!confirm(warn)) return
+    const replace = restoreMode.value === 'replace'
+    const ok = await confirmDialog({
+      title: replace ? '用备份替换本机数据？' : '把备份合并进来？',
+      message: replace
+        ? `备份里有 ${summary}。\n本机现有的文档和笔记会被全部替换，无法撤销。AI 接口配置和 API Key 保留本机的。`
+        : `备份里有 ${summary}。\n本机已有的同一条数据保留本机的，不会被覆盖。`,
+      confirmText: replace ? '替换' : '合并',
+      danger: replace,
+    })
+    if (!ok) return
     const r = await restoreBackup(db, backup, restoreMode.value)
     const hasKey = (await Promise.all(PROVIDER_PRESETS.map((p) => getProviderSettings(p.id)))).some((s) => s.hasKey)
     const message =
@@ -91,8 +97,10 @@ async function onRestoreFile(e: Event) {
 
 async function clearAll() {
   const backupHint = lastExportAt.value ? `上次备份是 ${fmt(lastExportAt.value)}，之后的改动会丢失。` : '你还没有导出过备份，清除后数据无法找回。'
-  if (!confirm(`清除全部数据？\n\n所有文档、划线、批注、对话和设置（包括 API Key）都会被删除。\n${backupHint}`)) return
-  if (!confirm('再确认一次：真的要清除全部数据吗？此操作无法撤销。')) return
+  const first = await confirmDialog({ title: '清除全部数据？', message: `所有文档、划线、批注、对话和设置（包括 API Key）都会被删除。\n${backupHint}`, confirmText: '继续', danger: true })
+  if (!first) return
+  const second = await confirmDialog({ title: '真的要清除吗？', message: '这是最后一次确认，此操作无法撤销。', confirmText: '清除全部数据', danger: true })
+  if (!second) return
   busy.value = true
   try {
     await clearAllData(db)
@@ -243,25 +251,6 @@ input[type='number'] {
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
-}
-button {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 15px;
-}
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-button.danger {
-  color: var(--danger);
-}
-button:disabled {
-  opacity: 0.5;
 }
 .muted {
   color: var(--muted);

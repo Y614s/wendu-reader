@@ -84,19 +84,6 @@ async function reset() {
   gap: 8px;
   margin-top: 8px;
 }
-button {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  font-size: 14px;
-}
-button.danger {
-  color: var(--danger);
-}
-button:disabled {
-  opacity: 0.4;
-}
 .muted {
   color: var(--muted);
   font-size: 13px;

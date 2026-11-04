@@ -358,21 +358,4 @@ textarea {
   background: var(--bg);
   color: var(--fg);
 }
-button {
-  padding: 8px 14px;
-  white-space: nowrap;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 15px;
-}
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-button:disabled {
-  opacity: 0.5;
-}
 </style>

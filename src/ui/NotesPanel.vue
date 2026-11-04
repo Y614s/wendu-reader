@@ -250,12 +250,4 @@ h4 {
 .small {
   font-size: 12px;
 }
-button {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 14px;
-}
 </style>

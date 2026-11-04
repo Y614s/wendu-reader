@@ -38,6 +38,11 @@ export function topVisiblePosition(map: TextMap, container: HTMLElement): number
 export function scrollToPosition(map: TextMap, container: HTMLElement, pos: number): void {
   const p = clampPosition(pos, map.text.length)
   if (p === null) return
+  // 开头回到最顶上，留出顶栏的位置
+  if (p === 0) {
+    container.scrollTop = 0
+    return
+  }
   const rect = map.toRange(p, Math.min(p + 1, map.text.length)).getBoundingClientRect()
   if (rect.top === 0 && rect.height === 0) return
   container.scrollTop = scrollTopFor(container.scrollTop, rect.top, container.getBoundingClientRect().top)

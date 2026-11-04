@@ -21,16 +21,25 @@ export const appState = reactive({
   /** 文档内容被更新时加一，阅读页据此重新渲染 */
   sourceVersion: 0,
   toast: '',
+  /** 提示条上的操作，例如「撤销」 */
+  toastAction: null as { label: string; run: () => void | Promise<void> } | null,
   /** 全局笔记页要跳到的原文；阅读页处理完清空。ask 表示跳过去后打开提问面板 */
   jump: null as { anchorId: string; ask: boolean } | null,
 })
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 
-export function showToast(text: string, ms = 2500): void {
+export function showToast(text: string, ms = 2500, action: { label: string; run: () => void | Promise<void> } | null = null): void {
   appState.toast = text
+  appState.toastAction = action
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (appState.toast = ''), ms)
+  toastTimer = setTimeout(closeToast, ms)
+}
+
+export function closeToast(): void {
+  clearTimeout(toastTimer)
+  appState.toast = ''
+  appState.toastAction = null
 }
 
 async function fetchSample(): Promise<string> {
@@ -61,6 +70,15 @@ export async function importText(text: string, name: string, open = true): Promi
   showToast(titles.has(doc.title) ? `已导入「${doc.title}」，同名文档已保留两份` : `已导入「${doc.title}」`)
   if (open) await openDocument(doc.id)
   return doc
+}
+
+/** 书架空着时，打开内置的示例文档看看 */
+export async function importSample(): Promise<void> {
+  try {
+    await importText(await fetchSample(), 'sample.md')
+  } catch (e) {
+    showToast(String(e), 4000)
+  }
 }
 
 /** 从全局笔记页跳到某篇文档的某处原文 */

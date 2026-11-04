@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { db, type AnchorRecord, type DocumentRecord } from '../db'
 import { appState, jumpToNote, showToast } from '../app/store'
+import { confirmDialog } from '../app/dialog'
 import { prefs } from '../app/prefs'
 import { buildGlobalEntries, filterEntries, groupByDoc, isAnswered, questionEntries, type GlobalEntry } from '../reader/globalNotes'
 import { HIGHLIGHT_COLORS, colorName, type HighlightColor } from '../highlight/colors'
@@ -97,7 +98,8 @@ async function startBatch() {
     batchMessage.value = problem
     return
   }
-  if (!confirm(`对 ${picked.length} 处原文依次提问「${question}」？\n\n每条都会发一次请求，消耗你的额度。`)) return
+  const ok = await confirmDialog({ title: `对 ${picked.length} 处原文依次提问？`, message: `问题是「${question}」。每条都会发一次请求，消耗你的额度。`, confirmText: '开始提问' })
+  if (!ok) return
 
   batchRunning.value = true
   batchProgress.value = `0 / ${picked.length}`
@@ -247,22 +249,7 @@ input[type='search'],
   border-radius: 6px;
   background: var(--bg);
 }
-button {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  font-size: 14px;
-}
 button.on,
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-button:disabled {
-  opacity: 0.5;
-}
 .chip {
   border-radius: 14px;
 }

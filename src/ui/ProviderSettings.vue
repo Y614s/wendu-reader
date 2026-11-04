@@ -12,6 +12,7 @@ import {
   setSelectedProviderId,
   type ProviderSettings,
 } from '../ai/providers'
+import { confirmDialog } from '../app/dialog'
 
 // AI 接口设置。Key 只写不读：保存后界面上只显示「已设置」，不回填、不显示任何字符，只能更改或删除。
 
@@ -78,7 +79,8 @@ function cancelChangeKey() {
 
 async function removeKey() {
   if (!form.value) return
-  if (!confirm(`删除「${preset.value.name}」的 API Key？删除后需要重新填写才能提问。`)) return
+  const ok = await confirmDialog({ title: `删除「${preset.value.name}」的 API Key？`, message: '删除后需要重新填写才能提问。', confirmText: '删除', danger: true })
+  if (!ok) return
   await deleteApiKey(form.value.providerId)
   form.value.hasKey = false
   editingKey.value = true
@@ -185,22 +187,6 @@ select {
   border-radius: 6px;
   color: var(--ok);
   font-weight: normal;
-}
-button {
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 15px;
-}
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-button.danger {
-  color: var(--danger);
 }
 button.link {
   border: none;

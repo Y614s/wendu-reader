@@ -63,20 +63,9 @@ const themes: { value: ThemeSetting; label: string }[] = [
   min-width: 32px;
   text-align: center;
 }
-button {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 15px;
-}
 button.on {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-}
-button:disabled {
-  opacity: 0.4;
 }
 </style>

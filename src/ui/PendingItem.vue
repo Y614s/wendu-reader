@@ -72,20 +72,6 @@ textarea {
   background: var(--bg);
   color: var(--fg);
 }
-button {
-  padding: 6px 12px;
-  white-space: nowrap;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 14px;
-}
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
 .hint {
   color: var(--muted);
   font-size: 13px;

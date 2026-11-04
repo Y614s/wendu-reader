@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../../src/db'
-import { addHighlight, addNote, deleteAnchorIfUnused, removeHighlightAndNotes, saveAnchor, setHighlightColor } from '../../src/anchor/store'
+import { addHighlight, addNote, deleteAnchorIfUnused, removeHighlightAndNotes, removeHighlightsForUndo, restoreRemoved, saveAnchor, setHighlightColor } from '../../src/anchor/store'
 
 const doc = { id: 'd', title: 't', source: '', hash: 'h', importedAt: 0, lastReadAt: 0, readingPosition: null }
 
@@ -67,5 +67,30 @@ describe('删除划线与清理锚点', () => {
     expect(await deleteAnchorIfUnused(empty.id)).toBe(true)
     expect(await deleteAnchorIfUnused(used.id)).toBe(false)
     expect(await db.anchors.get(used.id)).toBeDefined()
+  })
+})
+
+describe('撤销删除划线', () => {
+  it('撤销后划线、批注和锚点都恢复，位置和颜色不变', async () => {
+    const a = await saveAnchor(doc, '红黑树是一种自平衡的二叉查找树。', 3, 8)
+    await addHighlight(a.id, 'red')
+    await addNote(a.id, '批注', 'annotation')
+    const removed = await removeHighlightsForUndo([a.id])
+    expect(await db.anchors.get(a.id)).toBeUndefined()
+    expect(await db.notes.count()).toBe(0)
+
+    await restoreRemoved(removed)
+    expect(await db.anchors.get(a.id)).toEqual(a)
+    expect((await db.highlights.toArray()).map((h) => h.color)).toEqual(['red'])
+    expect((await db.notes.toArray()).map((n) => n.text)).toEqual(['批注'])
+  })
+
+  it('锚点上还有对话时也能撤销', async () => {
+    const a = await saveAnchor(doc, '红黑树', 0, 3)
+    await addHighlight(a.id)
+    await db.conversations.add({ id: 'c', docId: 'd', anchorId: a.id, kind: 'sidebar', status: 'done', messages: [], provider: '', model: '', createdAt: 0 })
+    await restoreRemoved(await removeHighlightsForUndo([a.id]))
+    expect(await db.highlights.count()).toBe(1)
+    expect(await db.anchors.get(a.id)).toEqual(a)
   })
 })

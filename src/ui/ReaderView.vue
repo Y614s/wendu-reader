@@ -4,6 +4,7 @@ import { db, getSetting, setSetting, type ConversationRecord, type DocumentRecor
 import { saveReadingPosition } from '../db/documents'
 import { shouldRemindBackup } from '../db/backup'
 import { appState, showToast } from '../app/store'
+import { confirmDialog } from '../app/dialog'
 import { navigate } from '../app/router'
 import { prefs, setLastColor } from '../app/prefs'
 import { resolvedTheme } from '../app/theme'
@@ -25,7 +26,8 @@ import {
   deleteNote,
   loadAnnotations,
   locateAnchors,
-  removeHighlightAndNotes,
+  removeHighlightsForUndo,
+  restoreRemoved,
   deleteAnchorIfUnused,
   deleteConversation,
   saveAnchor,
@@ -544,7 +546,7 @@ watch(panel, (now) => {
 
 async function onDeleteConversation(conv: ConversationRecord) {
   const what = conv.status === 'pending' ? '这条待补充记录' : '这段对话'
-  if (!confirm(`删除${what}？删除后无法恢复。`)) return
+  if (!(await confirmDialog({ title: `删除${what}？`, message: '删除后无法恢复。', confirmText: '删除', danger: true }))) return
   await deleteConversation(conv.id)
   await refreshAnnotations()
   if (conv.anchorId) await cleanupAnchor(conv.anchorId)
@@ -563,10 +565,16 @@ async function removeTappedHighlight() {
   const ids = tapped.value.highlightIds
   // 有批注或「存为笔记」的地方，划线是跟着笔记画出来的：只删划线记录的话，重画后还在
   const noteCount = notes.value.filter((n) => ids.includes(n.anchorId)).length
-  if (noteCount && !confirm(`这处划线上有 ${noteCount} 条批注或笔记，会一起删除。确定删除？`)) return
-  for (const id of ids) await removeHighlightAndNotes(id)
+  const removed = await removeHighlightsForUndo(ids)
   tapped.value = null
   await refreshAnnotations()
+  showToast(noteCount ? `已删除划线和 ${noteCount} 条批注` : '已删除划线', 6000, {
+    label: '撤销',
+    run: async () => {
+      await restoreRemoved(removed)
+      await refreshAnnotations()
+    },
+  })
 }
 
 // ---------- 批注 ----------
@@ -581,7 +589,7 @@ async function saveEditor(text: string) {
 
 async function removeEditorNote() {
   if (!editor.value?.note) return
-  if (!confirm('删除这条批注？')) return
+  if (!(await confirmDialog({ title: '删除这条批注？', confirmText: '删除', danger: true }))) return
   await deleteNote(editor.value.note.id)
   editor.value = null
   await refreshAnnotations()
