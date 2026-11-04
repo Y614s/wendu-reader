@@ -347,7 +347,7 @@ button:focus-visible {
   transform-origin: top right;
 }
 
-.menu button {
+.menu > button {
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
@@ -359,7 +359,7 @@ button:focus-visible {
   white-space: normal;
 }
 
-.menu button:active:not(:disabled) {
+.menu > button:active:not(:disabled) {
   background: var(--surface);
   transform: none;
 }

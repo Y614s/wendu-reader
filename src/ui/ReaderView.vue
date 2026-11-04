@@ -48,6 +48,8 @@ import AskPanel from './AskPanel.vue'
 import NotesPanel from './NotesPanel.vue'
 import NoteEditor from './NoteEditor.vue'
 import TypographySettings from './TypographySettings.vue'
+import Icon from './Icon.vue'
+import { nextBar } from '../reader/chrome'
 
 const props = defineProps<{ active: boolean }>()
 
@@ -79,6 +81,7 @@ const searchInput = ref<HTMLInputElement | null>(null)
 const progress = ref(0)
 const currentHeading = ref<Heading | null>(null)
 const toolbarBottom = ref(0)
+const barHidden = ref(false)
 
 let map: TextMap | null = null
 let highlighter: CodeHighlighter | null = null
@@ -90,6 +93,8 @@ const cleanups: (() => void)[] = []
 const cache = computed(() => selectionState.cache)
 const pendingCount = computed(() => conversations.value.filter((c) => c.status === 'pending').length)
 const toc = computed(() => headings.value.filter((h) => h.level >= 2 && h.level <= 3))
+/** 这些东西开着时顶栏必须在 */
+const barPinned = computed(() => searchOpen.value || panel.value !== null || tocOpen.value || exportMenu.value || typoMenu.value)
 const noteGroups = computed(() =>
   buildNoteGroups({
     located: located.value,
@@ -246,6 +251,7 @@ async function savePositionNow() {
 let anchorPos: number | null = null
 let anchorTimer: ReturnType<typeof setTimeout> | undefined
 let lastWidth = 0
+let lastScrollTop = 0
 
 function keepPositionAfterReflow() {
   clearTimeout(anchorTimer)
@@ -270,6 +276,10 @@ function onScroll() {
     anchorPos = currentPosition()
   }, 150)
   progress.value = progressOf(el.scrollTop, el.scrollHeight, el.clientHeight)
+  const bar = nextBar({ hidden: barHidden.value, lastTop: lastScrollTop }, el.scrollTop)
+  lastScrollTop = bar.lastTop
+  // 选中文字时不动顶栏，免得它滑下来盖住正在选的内容
+  if (!barPinned.value && !cache.value && !tapped.value) barHidden.value = bar.hidden
   const top = el.getBoundingClientRect().top + 24
   let cur: Heading | null = null
   for (const h of toc.value) {
@@ -284,7 +294,8 @@ function onScroll() {
 function jumpToHeading(h: Heading) {
   const el = contentEl.value
   if (!el) return
-  el.scrollTop += h.el.getBoundingClientRect().top - el.getBoundingClientRect().top - 8
+  // 留出顶栏的高度
+  el.scrollTop += h.el.getBoundingClientRect().top - el.getBoundingClientRect().top - 72
   tocOpen.value = false
 }
 
@@ -321,7 +332,8 @@ function showCurrentMatch() {
   if (!m || !map || !el) return
   const rect = map.toRange(m.start, m.end).getBoundingClientRect()
   const box = el.getBoundingClientRect()
-  if (rect.top < box.top + 8 || rect.bottom > box.bottom - 8) el.scrollTop += rect.top - box.top - el.clientHeight / 3
+  // 顶部有顶栏和搜索条盖着
+  if (rect.top < box.top + 130 || rect.bottom > box.bottom - 8) el.scrollTop += rect.top - box.top - el.clientHeight / 3
 }
 
 function runSearch() {
@@ -469,9 +481,17 @@ function onContentClick(e: MouseEvent) {
     const box = contentEl.value.getBoundingClientRect()
     const y = (e.clientY - box.top) / box.height
     const page = contentEl.value.clientHeight - 48
-    if (y < 0.15) contentEl.value.scrollBy({ top: -page })
-    else if (y > 0.85) contentEl.value.scrollBy({ top: page })
+    if (y < 0.15) {
+      contentEl.value.scrollBy({ top: -page })
+      return
+    }
+    if (y > 0.85) {
+      contentEl.value.scrollBy({ top: page })
+      return
+    }
   }
+  // 点正文中间：收起或叫出顶栏
+  if (!barPinned.value) barHidden.value = !barHidden.value
 }
 
 const tappedNote = computed(() =>
@@ -751,6 +771,10 @@ watch(
 
 watch(resolvedTheme, () => void renderDiagrams())
 
+watch(barPinned, (on) => {
+  if (on) barHidden.value = false
+})
+
 // 全局笔记页的跳转。排进渲染队列，保证目标文档已经打开；页面可见时才量得到位置
 watch(
   () => [appState.jump, props.active] as const,
@@ -837,25 +861,28 @@ onBeforeUnmount(() => {
 <template>
   <div class="reader" :class="{ 'with-panel': panel }">
     <div class="doc-col">
-      <div class="doc-bar">
-        <button :disabled="!doc || !toc.length" @click="tocOpen = !tocOpen">目录</button>
+      <header class="doc-bar" :class="{ hidden: barHidden }">
+        <button class="ghost act" aria-label="返回书架" @click="navigate('library')"><Icon name="back" /></button>
         <span class="doc-title">{{ doc?.title ?? '' }}<span v-if="currentHeading" class="cur-sec"> · {{ currentHeading.title }}</span></span>
-        <button v-if="doc" :class="{ on: searchOpen }" @click="toggleSearch">搜索</button>
-        <button v-if="doc" @click="openWholeAsk">整篇提问</button>
-        <button v-if="doc" @click="panel = { mode: 'notes', focusPending: false }">笔记</button>
-        <span v-if="doc" class="menu-wrap">
-          <button @click="typoMenu = !typoMenu">排版</button>
-          <span v-if="typoMenu" class="menu typo-menu"><TypographySettings /></span>
-        </span>
-        <span v-if="doc" class="menu-wrap">
-          <button @click="exportMenu = !exportMenu">导出</button>
-          <span v-if="exportMenu" class="menu">
-            <button @click="onExportNotes">导出笔记（md）<small>划线、批注、问答，按章节整理</small></button>
-            <button @click="onExportOriginal">导出原文（md）<small>这篇文章本身，不含笔记</small></button>
+        <template v-if="doc">
+          <button v-if="pendingCount" class="chip tint" @click="panel = { mode: 'notes', focusPending: true }">待补充 {{ pendingCount }}</button>
+          <button class="ghost act" :class="{ on: tocOpen }" :disabled="!toc.length" aria-label="目录" @click="tocOpen = !tocOpen"><Icon name="list" /><span class="lbl">目录</span></button>
+          <button class="ghost act" :class="{ on: searchOpen }" aria-label="搜索" @click="toggleSearch"><Icon name="search" /><span class="lbl">搜索</span></button>
+          <button class="ghost act" aria-label="整篇提问" @click="openWholeAsk"><Icon name="ask" /><span class="lbl">提问</span></button>
+          <button class="ghost act" aria-label="本文笔记" @click="panel = { mode: 'notes', focusPending: false }"><Icon name="note" /><span class="lbl">笔记</span></button>
+          <span class="menu-wrap">
+            <button class="ghost act" :class="{ on: typoMenu }" aria-label="排版" @click="typoMenu = !typoMenu"><Icon name="type" /><span class="lbl">排版</span></button>
+            <span v-if="typoMenu" class="menu typo-menu"><TypographySettings /></span>
           </span>
-        </span>
-        <button v-if="pendingCount" class="pending" @click="panel = { mode: 'notes', focusPending: true }">待补充 {{ pendingCount }}</button>
-      </div>
+          <span class="menu-wrap">
+            <button class="ghost act" :class="{ on: exportMenu }" aria-label="更多" @click="exportMenu = !exportMenu"><Icon name="more" /></button>
+            <span v-if="exportMenu" class="menu">
+              <button @click="onExportNotes">导出笔记（md）<small>划线、批注、问答，按章节整理</small></button>
+              <button @click="onExportOriginal">导出原文（md）<small>这篇文章本身，不含笔记</small></button>
+            </span>
+          </span>
+        </template>
+      </header>
       <div class="progress"><div class="bar" :style="{ width: progress * 100 + '%' }" /></div>
       <div v-if="searchOpen" class="search-bar">
         <input
@@ -870,17 +897,20 @@ onBeforeUnmount(() => {
         <span class="search-count">{{ searchMatches.length ? `第 ${searchIndex + 1} / ${searchMatches.length} 处` : searchQuery.trim() ? '没有找到' : '' }}</span>
         <button :disabled="!searchMatches.length" @click="moveSearch(-1)">上一个</button>
         <button :disabled="!searchMatches.length" @click="moveSearch(1)">下一个</button>
-        <button @click="closeSearch">关闭</button>
+        <button class="ghost act" aria-label="关闭搜索" @click="closeSearch"><Icon name="close" /></button>
       </div>
 
-      <div v-if="!doc && appState.ready" class="empty">
-        <p>还没有打开文档。</p>
-        <button class="primary" @click="navigate('library')">去书架</button>
+      <div v-if="!doc && appState.ready" class="empty-state">
+        <Icon class="big-icon" name="book" :size="56" />
+        <h3>还没有打开文档</h3>
+        <p>到书架选一篇，或者导入新的 Markdown 文档。</p>
+        <div class="row"><button class="primary" @click="navigate('library')">去书架</button></div>
       </div>
 
-      <div class="content-wrap">
+      <div v-show="doc" class="content-wrap">
         <article ref="contentEl" class="md content" @click="onContentClick" @scroll.passive="onScroll" />
         <nav v-if="tocOpen" class="toc">
+          <h4>目录</h4>
           <button
             v-for="(h, i) in toc"
             :key="i"
@@ -896,11 +926,11 @@ onBeforeUnmount(() => {
 
     <aside v-if="panel && doc" class="side">
       <header class="panel-head">
-        <div class="panel-tabs">
+        <div class="segment">
           <button :class="{ on: panel.mode === 'ask' }" @click="openAskTab">提问</button>
           <button :class="{ on: panel.mode === 'notes' }" @click="panel = { mode: 'notes', focusPending: false }">笔记</button>
         </div>
-        <button class="close" @click="panel = null">关闭</button>
+        <button class="ghost act" aria-label="关闭侧栏" @click="panel = null"><Icon name="close" /></button>
       </header>
       <AskPanel
         v-if="panel.mode === 'ask'"
@@ -945,11 +975,12 @@ onBeforeUnmount(() => {
           <span class="color-dot" :class="c" />
         </button>
       </span>
+      <span class="sep" />
       <button @pointerdown.prevent @click="onAnnotate">批注</button>
-      <button @pointerdown.prevent @click="onAsk">侧栏问</button>
+      <button @pointerdown.prevent @click="onAsk">问 AI</button>
       <button @pointerdown.prevent @click="onSendToApp">发到 App</button>
       <button @pointerdown.prevent @click="onCopy">复制</button>
-      <button class="cancel" @pointerdown.prevent @click="onCancel">✕</button>
+      <button class="cancel" aria-label="取消选择" @pointerdown.prevent @click="onCancel"><Icon name="close" :size="18" /></button>
     </div>
 
     <div v-else-if="tapped" class="toolbar" :style="{ bottom: toolbarBottom + 'px' }">
@@ -965,10 +996,11 @@ onBeforeUnmount(() => {
           <span class="color-dot" :class="c" />
         </button>
       </span>
+      <span v-if="tapped.highlightIds.length" class="sep" />
       <button v-if="tapped.highlightIds.length" @click="openEditorForTapped">{{ tappedNote ? '编辑批注' : '写批注' }}</button>
       <button v-if="tapped.convAnchorId" @click="openAnchorPanel(tapped.convAnchorId)">查看对话（{{ tapped.convCount }}）</button>
       <button v-if="tapped.highlightIds.length" @click="removeTappedHighlight">删除划线</button>
-      <button class="cancel" @click="tapped = null">✕</button>
+      <button class="cancel" aria-label="关闭" @click="tapped = null"><Icon name="close" :size="18" /></button>
     </div>
 
     <NoteEditor
@@ -982,142 +1014,123 @@ onBeforeUnmount(() => {
       @remove="removeEditorNote"
     />
   </div>
+  </div>
 </template>
 
 <style scoped>
 .reader {
+  --bar-h: 56px;
   display: flex;
   height: 100%;
   min-height: 0;
+  padding-top: env(safe-area-inset-top);
 }
 .doc-col {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  container: doc / inline-size;
 }
+/* 顶栏浮在正文上：收起时正文不动，阅读位置不跳 */
 .doc-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
   display: flex;
-  gap: 8px;
+  gap: 2px;
   align-items: center;
-  padding: 6px 16px;
+  height: var(--bar-h);
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.doc-bar.hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
 }
 .doc-title {
   flex: 1;
   min-width: 0;
+  margin: 0 8px 0 2px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-weight: 500;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
 }
 .cur-sec {
   color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 14px;
   font-weight: normal;
 }
-.doc-bar button,
-.empty button {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 15px;
-  white-space: nowrap;
+.act {
+  gap: 5px;
+  min-width: var(--tap);
+  padding: 0 10px;
+  color: var(--muted);
 }
-.doc-bar button:disabled,
-.search-bar button:disabled {
-  opacity: 0.4;
+.act.on {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
-.doc-bar button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.lbl {
+  font-size: 14px;
+}
+.typo-menu {
+  width: 340px;
+  padding: 4px 16px;
+}
+.chip.tint {
+  margin-right: 6px;
 }
 .search-bar {
+  position: absolute;
+  top: calc(var(--bar-h) + 8px);
+  left: 12px;
+  right: 12px;
+  z-index: 9;
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 6px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--card);
+  box-shadow: var(--shadow-2);
+  animation: pop var(--dur) var(--ease);
 }
 .search-bar input {
   flex: 1;
   min-width: 80px;
-  font: inherit;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-}
-.search-bar button {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  font-size: 14px;
-  white-space: nowrap;
 }
 .search-count {
   color: var(--muted);
   font-size: 13px;
   white-space: nowrap;
 }
-.menu-wrap {
-  position: relative;
-}
-.menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  min-width: 220px;
-  padding: 4px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-  z-index: 15;
-}
-.doc-bar .menu button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  border: none;
-  text-align: left;
-}
-.typo-menu {
-  width: 300px;
-  padding: 0 14px;
-}
-.menu small {
-  color: var(--muted);
-  font-size: 12px;
-}
-.doc-bar .pending {
-  border-color: var(--warn);
-  color: var(--warn);
-}
-.empty button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
 .progress {
-  height: 3px;
-  background: var(--border);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 11;
+  height: 2px;
+  pointer-events: none;
 }
 .progress .bar {
   height: 100%;
   background: var(--accent);
   transition: width 0.15s;
-}
-.empty {
-  padding: 32px;
-  color: var(--muted);
 }
 .content-wrap {
   position: relative;
@@ -1130,40 +1143,54 @@ onBeforeUnmount(() => {
   /* 宽表格、长公式在自己内部滚动，正文只上下滚，页面不会左右晃 */
   overflow-x: hidden;
   overflow-y: auto;
-  padding-block: 16px 120px;
+  padding-block: calc(var(--bar-h) + 16px) 120px;
 }
 .toc {
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
-  width: min(320px, 80%);
+  z-index: 8;
+  width: min(340px, 80%);
   overflow: auto;
-  padding: 8px 0;
+  padding: calc(var(--bar-h) + 12px) 10px 16px;
   background: var(--panel-bg);
   border-right: 1px solid var(--panel-border);
-  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.15);
-  z-index: 5;
+  box-shadow: var(--shadow-2);
+  animation: slide-toc var(--dur) var(--ease);
+}
+@keyframes slide-toc {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+.toc h4 {
+  margin: 0 0 8px;
+  padding: 0 12px;
+  font-size: 18px;
+  font-weight: 600;
 }
 .toc-item {
   display: block;
   width: 100%;
-  padding: 10px 16px;
+  height: auto;
+  padding: 10px 12px;
   border: none;
   background: none;
-  color: var(--fg);
   text-align: left;
-  font-size: 15px;
+  white-space: normal;
+  line-height: 1.5;
 }
 .toc-item.sub {
-  padding-left: 32px;
+  padding-left: 28px;
   font-size: 14px;
   color: var(--muted);
 }
 .toc-item.cur {
+  background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 600;
-  background: var(--panel-head);
+  font-weight: 500;
 }
 .side {
   display: flex;
@@ -1174,38 +1201,16 @@ onBeforeUnmount(() => {
   min-height: 0;
   background: var(--panel-bg);
   border-left: 1px solid var(--panel-border);
-  box-shadow: -2px 0 8px rgba(31, 35, 40, 0.08);
+  animation: slide-side var(--dur) var(--ease);
 }
 .panel-head {
   position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 12px;
-  background: var(--panel-head);
+  min-height: var(--bar-h);
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--panel-border);
-}
-.panel-tabs {
-  display: flex;
-  gap: 4px;
-}
-.panel-head button {
-  padding: 4px 12px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: none;
-  color: var(--panel-title);
-  font-size: 15px;
-}
-.panel-tabs button.on {
-  background: var(--bg);
-  border-color: var(--panel-border);
-  font-weight: 600;
-}
-.panel-head .close {
-  border-color: var(--panel-border);
-  background: var(--bg);
-  color: var(--fg);
 }
 /* 竖屏：面板变成底部抽屉 */
 @media (orientation: portrait) {
@@ -1222,14 +1227,15 @@ onBeforeUnmount(() => {
     flex: 1 1 55%;
     border-left: none;
     border-top: 1px solid var(--panel-border);
-    border-radius: 14px 14px 0 0;
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
     overflow: hidden;
     /* 抽屉浮在正文上方的感觉 */
-    box-shadow: 0 -4px 16px rgba(31, 35, 40, 0.18);
-    z-index: 1;
+    box-shadow: var(--shadow-3);
+    z-index: 12;
+    animation-name: slide-up;
   }
   .panel-head {
-    padding-top: 16px;
+    padding-top: 12px;
   }
   /* 顶部的把手条 */
   .panel-head::before {
@@ -1248,52 +1254,77 @@ onBeforeUnmount(() => {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: max(12px, env(safe-area-inset-bottom));
+  margin-bottom: max(16px, env(safe-area-inset-bottom));
   display: flex;
-  gap: 2px;
+  gap: 0;
   align-items: center;
   /* 窄屏放不下时分两行 */
   flex-wrap: wrap;
   justify-content: center;
   width: max-content;
   max-width: calc(100vw - 16px);
-  padding: 6px;
+  padding: 4px 8px;
   background: var(--bar-bg);
   color: var(--bar-fg);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  border-radius: 28px;
+  box-shadow: var(--shadow-3);
   z-index: 20;
   user-select: none;
   -webkit-user-select: none;
+  animation: rise var(--dur) var(--ease);
 }
 .toolbar button {
-  padding: 10px 14px;
+  padding: 0 14px;
   border: none;
-  border-radius: 8px;
+  border-radius: 22px;
   background: transparent;
   color: var(--bar-fg);
-  font-size: 16px;
-  white-space: nowrap;
+  font-size: 15px;
 }
-.toolbar button:active {
-  background: rgba(255, 255, 255, 0.15);
+.toolbar button:active:not(:disabled) {
+  background: var(--bar-press);
 }
 .dots {
   display: inline-flex;
   align-items: center;
 }
 .toolbar .dot-btn {
-  display: inline-flex;
-  padding: 10px 7px;
+  width: var(--tap);
+  padding: 0;
+}
+.toolbar .dot-btn .color-dot {
+  width: 20px;
+  height: 20px;
+}
+.sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--bar-muted);
+  opacity: 0.4;
 }
 .toolbar .cancel {
-  padding: 10px 12px;
+  width: var(--tap);
+  padding: 0;
   color: var(--bar-muted);
 }
 .sel-info {
   font-size: 12px;
   color: var(--bar-muted);
-  padding: 0 6px;
+  padding: 0 8px 0 10px;
   white-space: nowrap;
+}
+/* 面板打开或竖屏时位置窄，按钮只留图标 */
+@container doc (max-width: 720px) {
+  .lbl,
+  .cur-sec {
+    display: none;
+  }
+  .act {
+    padding: 0;
+  }
+  .search-bar button:not(.act) {
+    padding: 0 10px;
+  }
 }
 </style>

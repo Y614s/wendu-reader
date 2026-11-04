@@ -59,6 +59,10 @@ const themes: { value: ThemeSetting; label: string }[] = [
   gap: 6px;
   align-items: center;
 }
+.seg button {
+  flex: 1;
+  padding: 0 10px;
+}
 .value {
   min-width: 32px;
   text-align: center;
