@@ -7,7 +7,9 @@ import { historyForRequest } from '../ai/history'
 import { prefs } from '../app/prefs'
 import { getProviderConfig, getSelectedProviderId, presetOf } from '../ai/providers'
 import { renderAnswer, splitAnswerBlocks } from '../reader/answer'
+import { navigate } from '../app/router'
 import PendingItem from './PendingItem.vue'
+import Icon from './Icon.vue'
 
 // 侧栏问：针对一处原文（anchorId 不为空）或整篇文档（anchorId 为空）提问。
 
@@ -30,6 +32,8 @@ const streaming = ref(false)
 const answerDraft = ref('')
 const errorText = ref('')
 const notice = ref('')
+/** 接口还没配好，提示里给一个去设置的按钮 */
+const needSetup = ref(false)
 const activeId = ref<string | null>(null)
 const listEl = ref<HTMLElement | null>(null)
 let abort: AbortController | null = null
@@ -65,12 +69,14 @@ async function ask() {
   if (!q || streaming.value) return
   errorText.value = ''
   notice.value = ''
+  needSetup.value = false
   const providerId = await getSelectedProviderId()
   const cfg = await getProviderConfig(providerId)
   const problem = configProblem(cfg)
   if (problem) {
     // 配置不全时不建对话，问题留在输入框里
     errorText.value = problem
+    needSetup.value = true
     return
   }
 
@@ -167,7 +173,7 @@ onBeforeUnmount(stop)
           <span v-else>侧栏问 · {{ c.provider }}{{ c.model ? ' · ' + c.model : '' }}</span>
           <span>
             {{ fmtTime(c.createdAt) }}
-            <button class="del-conv" :disabled="streaming && activeId === c.id" @click="emit('deleteConversation', c)">删除</button>
+            <button class="del-conv mini ghost" :disabled="streaming && activeId === c.id" @click="emit('deleteConversation', c)">删除</button>
           </span>
         </div>
         <template v-for="(m, i) in c.messages" :key="i">
@@ -177,7 +183,7 @@ onBeforeUnmount(stop)
               <div class="md" v-html="renderAnswer(b)" />
               <template v-if="anchorId">
                 <span v-if="savedTexts.has(b)" class="saved">已存为笔记</span>
-                <button v-else class="save-note" @click="emit('saveNote', b)">存为笔记</button>
+                <button v-else class="chip tint save-note" @click="emit('saveNote', b)">存为笔记</button>
               </template>
             </div>
             <p v-if="m.error" class="error">{{ m.error }}</p>
@@ -190,17 +196,20 @@ onBeforeUnmount(stop)
       </section>
 
       <p v-if="notice" class="notice">{{ notice }}</p>
-      <p v-if="errorText && !streaming" class="error">{{ errorText }}</p>
+      <div v-if="errorText && !streaming" class="error-box">
+        <p class="error">{{ errorText }}</p>
+        <button v-if="needSetup" class="primary" @click="navigate('settings')">去设置 AI 接口</button>
+      </div>
     </div>
 
     <footer class="panel-foot">
       <div class="scope">
         <span class="muted">上下文</span>
-        <button :class="{ on: scope === 'section' }" @click="scope = 'section'">本节</button>
-        <button :class="{ on: scope === 'full' }" @click="scope = 'full'">全文</button>
+        <button class="chip" :class="{ on: scope === 'section' }" @click="scope = 'section'">本节</button>
+        <button class="chip" :class="{ on: scope === 'full' }" @click="scope = 'full'">全文</button>
       </div>
       <div v-if="presets.length" class="presets">
-        <button v-for="p in presets" :key="p" :disabled="streaming" @click="askPreset(p)">{{ p }}</button>
+        <button v-for="p in presets" :key="p" class="chip tint" :disabled="streaming" @click="askPreset(p)">{{ p }}</button>
       </div>
       <div class="input-row">
         <textarea
@@ -210,8 +219,8 @@ onBeforeUnmount(stop)
           @focus="emit('focusInput')"
           @keydown.enter.ctrl.prevent="ask"
         />
-        <button v-if="streaming" @click="stop">停止</button>
-        <button v-else class="primary" :disabled="!question.trim()" @click="ask">发送</button>
+        <button v-if="streaming" class="send" aria-label="停止" @click="stop"><Icon name="stop" /></button>
+        <button v-else class="primary send" aria-label="发送" :disabled="!question.trim()" @click="ask"><Icon name="arrowUp" /></button>
       </div>
     </footer>
   </section>
@@ -227,25 +236,22 @@ onBeforeUnmount(stop)
 .panel-body {
   flex: 1;
   overflow: auto;
-  padding: 12px;
+  padding: 14px;
 }
 .quote {
-  margin: 0 0 12px;
-  padding: 8px 12px;
+  margin: 0 0 14px;
+  padding: 2px 12px;
   border-left: 3px solid var(--accent);
-  background: var(--bg);
+  color: var(--muted);
+  line-height: 1.6;
   white-space: pre-wrap;
   max-height: 30vh;
   overflow: auto;
 }
 .conv {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 .del-conv {
-  margin-left: 6px;
-  padding: 0 6px;
-  border: none;
-  background: none;
   color: var(--danger);
   font-size: 12px;
 }
@@ -258,13 +264,16 @@ onBeforeUnmount(stop)
   margin-bottom: 4px;
 }
 .msg {
-  margin: 6px 0;
-  line-height: 1.6;
+  margin: 8px 0;
+  line-height: 1.65;
 }
 .msg.user {
-  padding: 6px 10px;
-  background: var(--bg);
-  border-radius: 8px;
+  width: fit-content;
+  max-width: 88%;
+  margin-left: auto;
+  padding: 8px 12px;
+  border-radius: var(--radius-m) var(--radius-m) 4px var(--radius-m);
+  background: var(--accent-soft);
   white-space: pre-wrap;
 }
 .msg.user.small {
@@ -272,9 +281,18 @@ onBeforeUnmount(stop)
   max-height: 160px;
   overflow: auto;
 }
+.msg.assistant {
+  padding: 10px 14px;
+  border-radius: var(--radius-m);
+  background: var(--card);
+  box-shadow: var(--shadow-1);
+}
+.msg.assistant .md {
+  font-size: 16px;
+  line-height: 1.7;
+}
 .answer-block {
   position: relative;
-  padding-right: 4px;
 }
 .answer-block .md :deep(p) {
   margin: 0.4em 0;
@@ -284,23 +302,24 @@ onBeforeUnmount(stop)
 }
 .save-note,
 .saved {
-  display: inline-block;
-  margin: 0 0 6px;
+  margin: 4px 0;
   font-size: 12px;
 }
-.save-note {
-  padding: 2px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--accent);
-}
 .saved {
+  display: inline-block;
   color: var(--ok);
 }
+.error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
 .error {
+  margin: 0;
   color: var(--danger);
   font-size: 14px;
+  line-height: 1.6;
 }
 .notice {
   color: var(--warn);
@@ -311,37 +330,22 @@ onBeforeUnmount(stop)
   font-size: 13px;
 }
 .panel-foot {
-  padding: 8px 12px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--panel-border);
 }
 .scope {
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-bottom: 6px;
-}
-.scope button {
-  padding: 3px 12px;
-  font-size: 13px;
-}
-.scope button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 .presets {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 8px;
-}
-.presets button {
-  padding: 4px 10px;
-  border-color: var(--panel-border);
-  border-radius: 14px;
-  color: var(--accent);
-  font-size: 14px;
 }
 .input-row {
   display: flex;
@@ -350,12 +354,11 @@ onBeforeUnmount(stop)
 }
 textarea {
   flex: 1;
-  font: inherit;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  resize: vertical;
-  background: var(--bg);
-  color: var(--fg);
+  resize: none;
+}
+.send {
+  width: var(--tap);
+  padding: 0;
+  border-radius: 50%;
 }
 </style>

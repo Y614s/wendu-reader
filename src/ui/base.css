@@ -26,6 +26,10 @@
   --hl-blue: rgba(90, 160, 225, 0.3);
   --hl-green: rgba(100, 180, 110, 0.3);
   --hl-red: rgba(230, 110, 100, 0.34);
+  --dot-yellow: #e9bc45;
+  --dot-blue: #5f9fdc;
+  --dot-green: #62b077;
+  --dot-red: #dd6a5f;
   --ask-line: #a8502b;
   --flash-bg: rgba(168, 80, 43, 0.25);
   --search-bg: rgba(100, 150, 70, 0.3);
@@ -780,19 +784,19 @@ mark.wendu-hl,
 }
 
 .color-dot.yellow {
-  background: #e9bc45;
+  background: var(--dot-yellow);
 }
 
 .color-dot.blue {
-  background: #5f9fdc;
+  background: var(--dot-blue);
 }
 
 .color-dot.green {
-  background: #62b077;
+  background: var(--dot-green);
 }
 
 .color-dot.red {
-  background: #dd6a5f;
+  background: var(--dot-red);
 }
 
 mark.wendu-ask {

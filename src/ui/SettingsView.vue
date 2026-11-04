@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { navigate } from '../app/router'
+import { getAppVersion } from '../platform'
+import Icon, { type IconName } from './Icon.vue'
 import ProviderSettings from './ProviderSettings.vue'
 import TypographySettings from './TypographySettings.vue'
 import PromptSettings from './PromptSettings.vue'
@@ -12,6 +15,18 @@ import { BackupError, clearAllData, createBackup, parseBackup, restoreBackup, RE
 import { getProviderSettings, PROVIDER_PRESETS } from '../ai/providers'
 import { saveTextFile } from '../platform/files'
 import { formatDate } from '../export/markdown'
+
+type SectionId = 'ai' | 'reading' | 'colors' | 'prompts' | 'data' | 'about'
+const sections: { id: SectionId; label: string; icon: IconName }[] = [
+  { id: 'ai', label: 'AI 接口', icon: 'ask' },
+  { id: 'reading', label: '阅读', icon: 'type' },
+  { id: 'colors', label: '划线颜色', icon: 'palette' },
+  { id: 'prompts', label: '快捷提问', icon: 'spark' },
+  { id: 'data', label: '备份与数据', icon: 'data' },
+  { id: 'about', label: '关于', icon: 'info' },
+]
+const section = ref<SectionId>('ai')
+const version = ref('')
 
 const budgetInput = ref(prefs.contextBudget)
 const lastExportAt = ref<number | null>(null)
@@ -119,104 +134,157 @@ onMounted(async () => {
     const msg = sessionStorage.getItem(RESTORE_MESSAGE_KEY)
     if (msg) {
       restoreMessage.value = msg
+      section.value = 'data'
       sessionStorage.removeItem(RESTORE_MESSAGE_KEY)
     }
   } catch {
     // 读不到上次恢复的结果提示，忽略
   }
   lastExportAt.value = await getSetting<number | null>('backup.lastExportAt', null)
+  const v = await getAppVersion()
+  version.value = v.build ? `${v.version}（${v.build}）` : v.version
 })
 </script>
 
 <template>
   <div class="settings">
-    <ProviderSettings />
+    <nav class="side-nav">
+      <button v-for="s in sections" :key="s.id" class="ghost" :class="{ active: section === s.id }" @click="section = s.id">
+        <Icon :name="s.icon" :size="18" />{{ s.label }}
+      </button>
+    </nav>
 
-    <section>
-      <h2>阅读</h2>
-      <TypographySettings />
-      <label class="check">
-        <input type="checkbox" :checked="prefs.edgeTap" @change="setEdgeTap(($event.target as HTMLInputElement).checked)" />
-        点屏幕上下边缘翻一屏
-      </label>
-      <div class="field">
-        <span class="field-label">提问时的上下文预算（token）</span>
-        <div class="row">
-          <input v-model.number="budgetInput" type="number" min="500" step="1000" />
-          <button @click="saveBudget">保存</button>
+    <div class="pane">
+      <ProviderSettings v-if="section === 'ai'" />
+
+      <section v-else-if="section === 'reading'">
+        <h2>阅读</h2>
+        <TypographySettings />
+        <label class="check">
+          <input type="checkbox" :checked="prefs.edgeTap" @change="setEdgeTap(($event.target as HTMLInputElement).checked)" />
+          点屏幕上下边缘翻一屏
+        </label>
+        <div class="field">
+          <span class="field-label">提问时的上下文预算（token）</span>
+          <div class="row">
+            <input v-model.number="budgetInput" type="number" min="500" step="1000" />
+            <button @click="saveBudget">保存</button>
+          </div>
+          <span class="muted small">发给 AI 的原文按这个预算截取，大约等于同样数量的汉字。「全文」放不下时会提示只发送了部分内容。</span>
         </div>
-        <span class="muted small">发给 AI 的原文按这个预算截取，大约等于同样数量的汉字。「全文」放不下时会提示只发送了部分内容。</span>
-      </div>
-    </section>
+      </section>
 
-    <section>
-      <h2>划线颜色</h2>
-      <p class="muted small">名称用在笔记页和导出里，留空用默认名称。红色划线会进疑问清单。</p>
-      <div v-for="c in HIGHLIGHT_COLORS" :key="c" class="color-row">
-        <span class="color-dot" :class="c" />
-        <input
-          :value="prefs.colorNames[c] ?? ''"
-          :placeholder="DEFAULT_COLOR_NAMES[c]"
-          :maxlength="MAX_COLOR_NAME"
-          @change="setColorName(c, ($event.target as HTMLInputElement).value)"
-        />
-      </div>
-    </section>
+      <section v-else-if="section === 'colors'">
+        <h2>划线颜色</h2>
+        <p class="muted small">名称用在笔记页和导出里，留空用默认名称。红色划线会进疑问清单。</p>
+        <div v-for="c in HIGHLIGHT_COLORS" :key="c" class="color-row">
+          <span class="color-dot" :class="c" />
+          <input
+            :value="prefs.colorNames[c] ?? ''"
+            :placeholder="DEFAULT_COLOR_NAMES[c]"
+            :maxlength="MAX_COLOR_NAME"
+            @change="setColorName(c, ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+      </section>
 
-    <section>
-      <h2>快捷提问</h2>
-      <p class="muted small">显示在侧栏输入框上方，点一下直接发送。</p>
-      <PromptSettings group="anchor" title="针对选中的原文" />
-      <PromptSettings group="whole" title="针对整篇文档" />
-    </section>
+      <section v-else-if="section === 'prompts'">
+        <h2>快捷提问</h2>
+        <p class="muted small">显示在侧栏输入框上方，点一下直接发送。</p>
+        <PromptSettings group="anchor" title="针对选中的原文" />
+        <PromptSettings group="whole" title="针对整篇文档" />
+      </section>
 
-    <section>
-      <h2>备份与恢复</h2>
-      <p>
-        上次备份：<strong>{{ lastExportAt ? fmt(lastExportAt) : '还没有备份过' }}</strong>
-        <span v-if="lastExportAt && Date.now() - lastExportAt > REMIND_AFTER_MS" class="warn">（超过 7 天了）</span>
-      </p>
-      <p class="muted small">备份包含所有文档、划线、批注、对话和阅读设置，<strong>不含 API Key 和 AI 接口配置</strong>，换设备后要重新填写。数据只在本机，换设备或重装前请先备份。只恢复自己导出的备份。</p>
-      <div class="row">
-        <button class="primary" :disabled="busy" @click="exportBackup">导出备份</button>
-        <button :disabled="busy" @click="pickRestore('merge')">从备份恢复（合并）</button>
-        <button :disabled="busy" class="danger" @click="pickRestore('replace')">从备份恢复（替换）</button>
-      </div>
-      <input ref="restoreInput" type="file" accept=".json,application/json" hidden @change="onRestoreFile" />
-      <p class="muted small">合并：同一条数据本机已有时保留本机的。替换：本机的文档和笔记全部换成备份里的，API Key 和 AI 接口配置保留。</p>
-      <p v-if="restoreMessage" class="result">{{ restoreMessage }}</p>
-    </section>
+      <template v-else-if="section === 'data'">
+        <section>
+          <h2>备份与恢复</h2>
+          <p>
+            上次备份：<strong>{{ lastExportAt ? fmt(lastExportAt) : '还没有备份过' }}</strong>
+            <span v-if="lastExportAt && Date.now() - lastExportAt > REMIND_AFTER_MS" class="warn">（超过 7 天了）</span>
+          </p>
+          <p class="muted small">备份包含所有文档、划线、批注、对话和阅读设置，<strong>不含 API Key 和 AI 接口配置</strong>，换设备后要重新填写。数据只在本机，换设备或重装前请先备份。只恢复自己导出的备份。</p>
+          <div class="row">
+            <button class="primary" :disabled="busy" @click="exportBackup">导出备份</button>
+            <button :disabled="busy" @click="pickRestore('merge')">从备份恢复（合并）</button>
+            <button :disabled="busy" class="danger" @click="pickRestore('replace')">从备份恢复（替换）</button>
+          </div>
+          <input ref="restoreInput" type="file" accept=".json,application/json" hidden @change="onRestoreFile" />
+          <p class="muted small">合并：同一条数据本机已有时保留本机的。替换：本机的文档和笔记全部换成备份里的，API Key 和 AI 接口配置保留。</p>
+          <p v-if="restoreMessage" class="result">{{ restoreMessage }}</p>
+        </section>
 
-    <section>
-      <h2>清除数据</h2>
-      <p class="muted small">删除本机所有文档、划线、批注、对话和设置（包括 API Key），相当于重新安装。无法撤销，清除前请先导出备份。</p>
-      <button class="danger" :disabled="busy" @click="clearAll">清除全部数据</button>
-    </section>
+        <section class="danger-zone">
+          <h2>清除数据</h2>
+          <p class="muted small">删除本机所有文档、划线、批注、对话和设置（包括 API Key），相当于重新安装。无法撤销，清除前请先导出备份。</p>
+          <button class="danger" :disabled="busy" @click="clearAll">清除全部数据</button>
+        </section>
+      </template>
+
+      <section v-else>
+        <h2>关于问读</h2>
+        <p>版本 {{ version }}</p>
+        <p class="muted small">开源的安卓平板 Markdown 阅读器。文档和笔记只存在这台设备上，问题只发给你自己配置的 AI 接口，没有账号和统计。</p>
+        <h3>诊断</h3>
+        <p class="muted small">接口连不上、选区或划线不正常时，用它测试连通并生成报告。报告不含 API Key。</p>
+        <button @click="navigate('diagnostics')">打开诊断页</button>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .settings {
-  max-width: 640px;
-  padding: 16px 24px 48px;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 680px);
+  gap: 48px;
+  justify-content: center;
+  padding: 28px 32px 56px;
 }
-section + section {
+.side-nav {
+  position: sticky;
+  top: 28px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.side-nav button {
+  justify-content: flex-start;
+  gap: 10px;
+  color: var(--muted);
+}
+.side-nav button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.pane :deep(h2) {
+  margin: 0 0 12px;
+  font-size: 26px;
+  font-weight: 600;
+}
+.pane h3 {
+  margin: 28px 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.danger-zone {
   margin-top: 32px;
+  padding-top: 24px;
   border-top: 1px solid var(--border);
 }
 .color-row {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  margin: 8px 0;
+  margin: 10px 0;
+}
+.color-row .color-dot {
+  width: 20px;
+  height: 20px;
 }
 .color-row input {
-  font: inherit;
-  width: 160px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  width: 200px;
 }
 .field,
 .check {
@@ -228,11 +296,8 @@ section + section {
 .check {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-}
-.check input {
-  width: 20px;
-  height: 20px;
+  gap: 10px;
+  min-height: var(--tap);
 }
 .field-label {
   font-weight: 500;
@@ -244,26 +309,36 @@ section + section {
   align-items: center;
 }
 input[type='number'] {
-  width: 140px;
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
+  width: 160px;
 }
 .muted {
   color: var(--muted);
 }
 .small {
   font-size: 13px;
+  line-height: 1.7;
 }
 .warn {
   color: var(--warn);
 }
 .result {
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 10px 14px;
+  border-radius: var(--radius-m);
   background: var(--surface);
+}
+@media (orientation: portrait) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .side-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .side-nav button {
+    flex: none;
+    gap: 6px;
+  }
 }
 </style>

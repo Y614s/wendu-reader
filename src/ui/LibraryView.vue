@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { db, type DocumentRecord } from '../db'
 import { applyMigration, planMigration, type MigrationPlan } from '../anchor/migrate'
 import { listDocuments, loadDocStats, type DocStats } from '../db/documents'
 import { parseTags } from '../reader/markdown'
-import { appState, deleteDocument, importText, openDocument, showToast } from '../app/store'
+import { appState, deleteDocument, importSample, importText, openDocument, showToast } from '../app/store'
 import { confirmDialog } from '../app/dialog'
 import { exportOriginal } from '../export/original'
 import { isLikelyMarkdown, isTooLarge } from '../platform/incoming'
+import { continueDoc, percent, sortByRecent } from '../reader/library'
+import Icon from './Icon.vue'
 
 // 书架：标题、进度、划线和问答数、标签；点开即读；可以按标签筛选、导出和删除。
 
@@ -22,16 +24,18 @@ const activeTag = ref<string | null>(null)
 
 const allTags = computed(() => [...new Set([...tagsOf.value.values()].flat())].sort((a, b) => a.localeCompare(b, 'zh-CN')))
 const shown = computed(() => (activeTag.value === null ? docs.value : docs.value.filter((d) => tagsOf.value.get(d.id)?.includes(activeTag.value!))))
+const resume = computed(() => continueDoc(docs.value))
+const menuFor = ref<string | null>(null)
+
+function closeMenu(e: PointerEvent) {
+  if (!(e.target as Element).closest?.('.menu-wrap')) menuFor.value = null
+}
 
 async function refresh() {
-  docs.value = await listDocuments()
+  docs.value = sortByRecent(await listDocuments())
   stats.value = await loadDocStats()
   tagsOf.value = new Map(docs.value.map((d) => [d.id, parseTags(d.source)]))
   if (activeTag.value !== null && !allTags.value.includes(activeTag.value)) activeTag.value = null
-}
-
-function progressText(d: DocumentRecord): string {
-  return d.progress === undefined ? '未读' : `${Math.round(d.progress * 100)}%`
 }
 
 function statsText(id: string): string {
@@ -43,7 +47,7 @@ function statsText(id: string): string {
 }
 
 function fmt(t: number) {
-  return new Date(t).toLocaleString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return new Date(t).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
 }
 
 async function onFilesPicked(e: Event) {
@@ -154,20 +158,24 @@ async function exportDoc(d: DocumentRecord) {
 }
 
 watch(() => appState.docsVersion, refresh)
-onMounted(refresh)
+onMounted(() => {
+  void refresh()
+  document.addEventListener('pointerdown', closeMenu)
+})
+onBeforeUnmount(() => document.removeEventListener('pointerdown', closeMenu))
 </script>
 
 <template>
   <div class="library">
-    <div class="head">
+    <div class="page-head">
       <h2>书架</h2>
-      <button class="primary" @click="fileInput?.click()">导入 md 文件</button>
-      <button @click="pasting = !pasting">{{ pasting ? '取消粘贴' : '粘贴导入' }}</button>
+      <button @click="pasting = !pasting"><Icon name="clipboard" :size="18" />{{ pasting ? '取消粘贴' : '粘贴导入' }}</button>
+      <button class="primary" @click="fileInput?.click()"><Icon name="plus" :size="18" />导入文档</button>
       <input ref="fileInput" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden @change="onFilesPicked" />
     </div>
 
     <!-- 确定按钮放在输入框上方：键盘弹出时会盖住下方的内容 -->
-    <div v-if="pasting" class="paste">
+    <div v-if="pasting" class="card block">
       <div class="paste-row">
         <input v-model="pasteName" placeholder="名称（可选，文档里有标题时以文档为准）" />
         <button class="primary" :disabled="!pasteText.trim()" @click="importPasted">确定导入</button>
@@ -175,14 +183,29 @@ onMounted(refresh)
       <textarea v-model="pasteText" rows="6" placeholder="把 Markdown 内容粘贴到这里" />
     </div>
 
-    <p v-if="docs.length === 0" class="empty">书架是空的。导入一个 md 文件，或者从微信等 App 里选「用其他应用打开」→「问读」。</p>
-
-    <div v-if="allTags.length" class="tag-bar">
-      <button :class="{ on: activeTag === null }" @click="activeTag = null">全部</button>
-      <button v-for="t in allTags" :key="t" :class="{ on: activeTag === t }" @click="activeTag = t">{{ t }}</button>
+    <div v-if="docs.length === 0 && !pasting" class="empty-state">
+      <Icon class="big-icon" name="book" :size="56" />
+      <h3>书架还是空的</h3>
+      <p>导入一个 Markdown 文件开始阅读，也可以在微信等 App 里选「用其他应用打开」，再选「问读」。</p>
+      <div class="row">
+        <button class="primary" @click="fileInput?.click()">导入文档</button>
+        <button @click="importSample">打开示例文档</button>
+      </div>
     </div>
 
-    <div v-if="updating" class="update">
+    <button v-if="resume && !updating" class="resume" @click="openDocument(resume!.id)">
+      <Icon name="book" />
+      <span class="resume-text">继续阅读 <strong>{{ resume.title }}</strong></span>
+      <span class="resume-pct">{{ percent(resume.progress) }}%</span>
+      <Icon name="arrowRight" :size="18" />
+    </button>
+
+    <div v-if="allTags.length" class="tag-bar">
+      <button class="chip" :class="{ on: activeTag === null }" @click="activeTag = null">全部</button>
+      <button v-for="t in allTags" :key="t" class="chip" :class="{ on: activeTag === t }" @click="activeTag = t">{{ t }}</button>
+    </div>
+
+    <div v-if="updating" class="card block">
       <strong>把「{{ updating.title }}」更新为新版本</strong>
       <template v-if="!updatePlan">
         <p class="hint">划线、批注和对话会迁移到新内容上。这不是导入新文档，书架上还是这一篇。</p>
@@ -191,7 +214,7 @@ onMounted(refresh)
           <button @click="cancelUpdate">取消</button>
         </div>
         <input ref="updateInput" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden @change="onUpdateFile" />
-        <div class="paste-row">
+        <div class="paste-row between">
           <span class="hint">或者粘贴新内容：</span>
           <button :disabled="!updateText.trim()" @click="previewUpdate(updateText, 'pasted.md')">检查</button>
         </div>
@@ -208,22 +231,28 @@ onMounted(refresh)
       </template>
     </div>
 
-    <ul class="list">
-      <li v-for="d in shown" :key="d.id" :class="{ current: d.id === appState.currentDocId }">
+    <ul class="grid">
+      <li v-for="d in shown" :key="d.id" class="doc card" :class="{ current: d.id === appState.currentDocId }">
         <button class="open" @click="openDocument(d.id)">
           <span class="title">{{ d.title }}</span>
-          <span class="meta">
-            <span class="progress">{{ progressText(d) }}</span>
-            <template v-if="statsText(d.id)"> · {{ statsText(d.id) }}</template>
-            · 最近阅读 {{ fmt(d.lastReadAt) }}
-          </span>
+          <span class="meta">{{ statsText(d.id) || (d.progress === undefined ? '未开始' : '还没有笔记') }}</span>
           <span v-if="tagsOf.get(d.id)?.length" class="tags">
             <span v-for="t in tagsOf.get(d.id)" :key="t" class="tag">{{ t }}</span>
           </span>
+          <span class="foot">
+            <span class="track"><span class="fill" :style="{ width: percent(d.progress) + '%' }" /></span>
+            <span class="pct">{{ percent(d.progress) }}%</span>
+            <span class="date">{{ fmt(d.lastReadAt) }}</span>
+          </span>
         </button>
-        <button class="side-btn" @click="startUpdate(d)">更新</button>
-        <button class="side-btn" @click="exportDoc(d)">导出</button>
-        <button class="side-btn del" @click="remove(d)">删除</button>
+        <span class="menu-wrap more">
+          <button class="ghost dots" :aria-label="`${d.title} 的更多操作`" @click="menuFor = menuFor === d.id ? null : d.id"><Icon name="more" /></button>
+          <span v-if="menuFor === d.id" class="menu">
+            <button @click="(menuFor = null), startUpdate(d)">更新为新版本<small>划线迁移到新内容上</small></button>
+            <button @click="(menuFor = null), exportDoc(d)">导出原文</button>
+            <button class="danger" @click="(menuFor = null), remove(d)">删除</button>
+          </span>
+        </span>
       </li>
     </ul>
   </div>
@@ -231,99 +260,30 @@ onMounted(refresh)
 
 <style scoped>
 .library {
-  max-width: 820px;
-  padding: 16px 24px 48px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 28px 32px 56px;
 }
-.head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.head h2 {
-  margin-right: auto;
-}
-.paste {
+.block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 12px 0;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.block p {
+  margin: 0;
 }
 .paste-row {
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+.paste-row.between {
+  justify-content: space-between;
 }
 .paste-row input {
   flex: 1;
   min-width: 0;
-}
-.paste input,
-.paste textarea {
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-}
-.empty {
-  color: var(--muted);
-}
-.list {
-  list-style: none;
-  padding: 0;
-  margin: 16px 0;
-}
-.list li {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  border-bottom: 1px solid var(--border);
-}
-.list li.current .title::before {
-  content: '● ';
-  color: var(--accent);
-}
-.open {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 14px 4px;
-  border: none;
-  border-radius: 0;
-  background: none;
-  text-align: left;
-}
-.title {
-  font-size: 17px;
-  font-weight: 500;
-}
-.meta {
-  font-size: 13px;
-  color: var(--muted);
-}
-.update {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: var(--panel-bg);
-}
-.update textarea {
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-}
-.update p {
-  margin: 0;
 }
 .hint {
   color: var(--muted);
@@ -332,25 +292,86 @@ onMounted(refresh)
 .warn {
   color: var(--warn);
 }
+.resume {
+  gap: 10px;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 60px;
+  margin-bottom: 20px;
+  padding: 0 18px;
+  border: none;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.resume:active:not(:disabled) {
+  background: var(--accent-soft);
+}
+.resume-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  text-align: left;
+  text-overflow: ellipsis;
+}
+.resume-text strong {
+  font-weight: 600;
+}
 .tag-bar {
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.doc {
+  position: relative;
+  display: flex;
+  padding: 0;
+}
+.doc.current {
+  border-color: var(--border-strong);
+}
+.open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 6px;
-  margin: 12px 0 0;
+  min-height: 148px;
+  padding: 18px 20px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  white-space: normal;
 }
-.tag-bar button {
-  padding: 4px 12px;
-  border-radius: 14px;
-  font-size: 14px;
+.open:active:not(:disabled) {
+  background: var(--surface);
+  transform: none;
 }
-.tag-bar button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  padding-right: 32px;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
 }
-.progress {
-  color: var(--accent);
-  font-weight: 500;
+.meta {
+  color: var(--muted);
+  font-size: 13px;
 }
 .tags {
   display: flex;
@@ -358,16 +379,45 @@ onMounted(refresh)
   gap: 4px;
 }
 .tag {
-  padding: 0 8px;
-  border-radius: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
 }
-.side-btn {
-  align-self: center;
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
-.del {
+.track {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface);
+}
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.dots {
+  width: var(--tap);
+  padding: 0;
+  color: var(--muted);
+}
+.menu button.danger {
   color: var(--danger);
 }
 </style>

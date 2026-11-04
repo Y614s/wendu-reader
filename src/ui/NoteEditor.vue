@@ -31,43 +31,39 @@ onMounted(() => input.value?.focus())
 .mask {
   position: fixed;
   inset: 0;
+  z-index: 30;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.25);
-  z-index: 30;
+  background: var(--scrim);
+  animation: fade var(--dur) var(--ease);
 }
 .sheet {
   width: min(640px, 100%);
-  padding: 14px 16px;
-  padding-bottom: max(14px, env(safe-area-inset-bottom));
-  border-radius: 14px 14px 0 0;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
+  background: var(--card);
+  box-shadow: var(--shadow-3);
+  animation: slide-up var(--dur) var(--ease);
 }
 .quote {
-  margin: 0 0 10px;
-  padding: 4px 10px;
-  border-left: 3px solid #d4a72c;
+  margin: 0 0 12px;
+  padding: 2px 12px;
+  border-left: 3px solid var(--accent);
   max-height: 6em;
   overflow: auto;
   white-space: pre-wrap;
   color: var(--muted);
+  line-height: 1.6;
 }
 textarea {
   width: 100%;
-  font: inherit;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
 }
 .row {
   display: flex;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 12px;
 }
 .spacer {
   flex: 1;

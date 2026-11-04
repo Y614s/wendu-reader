@@ -260,6 +260,7 @@ onMounted(async () => {
 
 <style scoped>
 .diag {
+  margin: 0 auto;
   max-width: 820px;
   padding: 16px 24px 48px;
 }

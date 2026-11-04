@@ -48,7 +48,7 @@ onMounted(async () => {
     <div class="panel-body">
       <div class="tools">
         <span class="muted">{{ groups.entries.length + groups.orphans.length }} 处笔记</span>
-        <button @click="emit('exportMd')">导出 md</button>
+        <button class="mini" @click="emit('exportMd')">导出 md</button>
       </div>
 
       <template v-if="groups.pending.length">
@@ -57,7 +57,7 @@ onMounted(async () => {
           <button v-if="p.anchorId" class="quote" @click="emit('jump', p.anchorId)">{{ p.quote || '（原文已找不到）' }}</button>
           <div class="meta">
             发到 App · {{ fmt(p.conv.createdAt) }}
-            <button class="del" @click="emit('deleteConversation', p.conv)">删除这条</button>
+            <button class="del mini ghost" @click="emit('deleteConversation', p.conv)">删除这条</button>
           </div>
           <PendingItem :id="p.conv.id" @changed="emit('changed')" @focus-input="emit('focusInput')" />
         </div>
@@ -120,7 +120,7 @@ onMounted(async () => {
 .panel-body {
   flex: 1;
   overflow: auto;
-  padding: 12px;
+  padding: 14px;
 }
 .tools {
   display: flex;
@@ -131,13 +131,14 @@ h4 {
   margin: 16px 0 8px;
   font-size: 14px;
   color: var(--panel-title);
+  font-weight: 600;
 }
 .item {
-  margin-bottom: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--panel-border);
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  background: var(--card);
+  box-shadow: var(--shadow-1);
 }
 .item.orphan {
   opacity: 0.85;
@@ -148,25 +149,28 @@ h4 {
   text-align: left;
   padding: 2px 0 2px 10px;
   border: none;
-  border-left: 3px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0;
   background: none;
   color: var(--fg);
   font: inherit;
+  line-height: 1.6;
   white-space: pre-wrap;
+  min-height: 0;
   max-height: 7.5em;
   overflow: hidden;
 }
 .quote.yellow {
-  border-left-color: #f2c94c;
+  border-left-color: var(--dot-yellow);
 }
 .quote.blue {
-  border-left-color: #56a0f5;
+  border-left-color: var(--dot-blue);
 }
 .quote.green {
-  border-left-color: #5cc16c;
+  border-left-color: var(--dot-green);
 }
 .quote.red {
-  border-left-color: #eb5757;
+  border-left-color: var(--dot-red);
 }
 .color-dot.small {
   width: 9px;
@@ -193,23 +197,26 @@ h4 {
   width: 100%;
   margin-top: 6px;
   padding: 0;
+  min-height: 0;
   border: none;
+  border-radius: 0;
   background: none;
   color: var(--fg);
   text-align: left;
+  white-space: normal;
   font: inherit;
   font-size: 14px;
 }
 .item.conv {
-  padding: 8px 10px;
-  border: 1px solid var(--panel-border);
-  background: var(--bg);
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  background: var(--card);
 }
 .tag {
   display: inline-block;
   margin-right: 6px;
-  padding: 0 6px;
-  border-radius: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
   font-size: 12px;
   background: var(--surface);
   color: var(--muted);
@@ -231,10 +238,6 @@ h4 {
   margin: 0.2em 0;
 }
 .meta .del {
-  margin-left: 8px;
-  padding: 0 6px;
-  border: none;
-  background: none;
   color: var(--danger);
   font-size: 12px;
 }

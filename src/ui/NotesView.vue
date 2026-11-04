@@ -11,6 +11,8 @@ import { configProblem } from '../ai/client'
 import { getProviderConfig, getSelectedProviderId, presetOf } from '../ai/providers'
 import { renderAnswer } from '../reader/answer'
 import { answeredPairs } from '../ai/history'
+import { navigate } from '../app/router'
+import Icon from './Icon.vue'
 
 // 全局笔记页：跨文档查看划线、批注和问答；疑问清单集中看红色划线，可以逐条或批量问。
 
@@ -30,6 +32,7 @@ const batchQuestion = ref('解释这段')
 const batchRunning = ref(false)
 const batchProgress = ref('')
 const batchMessage = ref('')
+const needSetup = ref(false)
 let batchAbort: AbortController | null = null
 
 const allTags = computed(() => [...new Set(entries.value.flatMap((e) => e.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN')))
@@ -91,11 +94,13 @@ async function startBatch() {
   const picked = entries.value.filter((e) => selected.value.has(e.anchorId))
   if (!question || picked.length === 0) return
   batchMessage.value = ''
+  needSetup.value = false
   const providerId = await getSelectedProviderId()
   const cfg = await getProviderConfig(providerId)
   const problem = configProblem(cfg)
   if (problem) {
     batchMessage.value = problem
+    needSetup.value = true
     return
   }
   const ok = await confirmDialog({ title: `对 ${picked.length} 处原文依次提问？`, message: `问题是「${question}」。每条都会发一次请求，消耗你的额度。`, confirmText: '开始提问' })
@@ -150,9 +155,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="notes-page">
-    <div class="head">
+    <div class="page-head">
       <h2>笔记</h2>
-      <div class="modes">
+      <div class="segment">
         <button :class="{ on: mode === 'all' }" @click="mode = 'all'">全部笔记</button>
         <button :class="{ on: mode === 'questions' }" @click="mode = 'questions'">疑问清单</button>
       </div>
@@ -178,16 +183,20 @@ onBeforeUnmount(() => {
         <button v-else class="primary" :disabled="selected.size === 0 || !batchQuestion.trim()" @click="startBatch">批量问（{{ selected.size }}）</button>
       </div>
       <div class="batch-row small">
-        <button v-if="!batchRunning" :disabled="unanswered.length === 0" @click="selectUnanswered">勾选没问过的</button>
-        <button v-if="!batchRunning && selected.size" @click="selected = new Set()">取消勾选</button>
+        <button v-if="!batchRunning" class="mini" :disabled="unanswered.length === 0" @click="selectUnanswered">勾选没问过的</button>
+        <button v-if="!batchRunning && selected.size" class="mini" @click="selected = new Set()">取消勾选</button>
         <span class="muted">一条一条依次问，回答挂回各自的原文；每次最多 {{ MAX_BATCH }} 条。</span>
       </div>
       <p v-if="batchMessage" class="message">{{ batchMessage }}</p>
+      <button v-if="needSetup" class="primary setup" @click="navigate('settings')">去设置 AI 接口</button>
     </div>
 
-    <p v-if="groups.length === 0" class="empty">
-      {{ mode === 'questions' && !base.length ? '还没有疑问。读的时候用红色划线标出来，就会出现在这里。' : base.length ? '没有符合条件的笔记。' : '还没有笔记。' }}
-    </p>
+    <div v-if="groups.length === 0" class="empty-state">
+      <Icon class="big-icon" name="note" :size="56" />
+      <h3>{{ base.length ? '没有符合条件的笔记' : mode === 'questions' ? '还没有疑问' : '还没有笔记' }}</h3>
+      <p>{{ base.length ? '换个筛选条件试试。' : mode === 'questions' ? '读的时候用红色划线标出来，就会出现在这里。' : '读的时候选中文字，可以划线、写批注或提问，它们都会汇总到这里。' }}</p>
+      <div v-if="!base.length" class="row"><button class="primary" @click="navigate('library')">去书架</button></div>
+    </div>
 
     <section v-for="g in groups" :key="g.docId" class="group">
       <h3>{{ g.docTitle }}</h3>
@@ -200,7 +209,7 @@ onBeforeUnmount(() => {
           <div class="meta">
             <span v-if="e.highlighted"><span class="color-dot small" :class="e.color" />{{ colorName(e.color, prefs.colorNames) }}</span>
             <span v-if="mode === 'questions'" :class="isAnswered(e) ? 'ok' : 'muted'">{{ isAnswered(e) ? '已问过' : '没问过' }}</span>
-            <button v-if="mode === 'questions'" class="ask" :disabled="batchRunning" @click="jumpToNote(e.docId, e.anchorId, true)">去问</button>
+            <button v-if="mode === 'questions'" class="ask mini" :disabled="batchRunning" @click="jumpToNote(e.docId, e.anchorId, true)">去问</button>
           </div>
           <div v-for="n in e.notes" :key="n.id" class="note">
             <span class="tag">{{ n.source === 'ai' ? 'AI 回答摘录' : '批注' }}</span>{{ n.text }}
@@ -214,66 +223,50 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .notes-page {
-  max-width: 860px;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 16px 24px 48px;
+  padding: 28px 32px 56px;
 }
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.modes,
 .chips,
 .batch-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
 }
 .filters {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 8px 0 16px;
+  gap: 10px;
+  margin-bottom: 20px;
 }
 input[type='search'],
 .batch-row input {
   flex: 1;
   min-width: 160px;
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-}
-button.on,
-.chip {
-  border-radius: 14px;
 }
 .color-dot.small {
   width: 10px;
   height: 10px;
-  margin-right: 5px;
+  margin-right: 2px;
 }
 .batch {
-  margin-bottom: 16px;
-  padding: 12px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border-radius: var(--radius-m);
   background: var(--panel-bg);
 }
 .batch-row.small {
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 13px;
 }
 .message {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 14px;
 }
-.empty,
+.setup {
+  margin-top: 10px;
+}
 .muted {
   color: var(--muted);
 }
@@ -281,18 +274,24 @@ button.on,
   color: var(--ok);
 }
 .group h3 {
-  margin: 20px 0 8px;
-  font-size: 16px;
+  margin: 28px 0 10px;
+  font-size: 18px;
+  font-weight: 600;
 }
 .item {
   display: flex;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-m);
+  background: var(--card);
+  box-shadow: var(--shadow-1);
 }
-.check input {
-  width: 20px;
-  height: 20px;
+.check {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 4px;
 }
 .body {
   flex: 1;
@@ -301,57 +300,57 @@ button.on,
 .quote {
   display: block;
   width: 100%;
-  padding: 2px 0 2px 10px;
+  min-height: 0;
+  padding: 2px 0 2px 12px;
   border: none;
-  border-left: 3px solid var(--border);
+  border-left: 3px solid var(--border-strong);
   border-radius: 0;
   background: none;
   text-align: left;
   font: inherit;
+  line-height: 1.65;
   white-space: pre-wrap;
   max-height: 7.5em;
   overflow: hidden;
 }
 .quote.yellow {
-  border-left-color: #f2c94c;
+  border-left-color: var(--dot-yellow);
 }
 .quote.blue {
-  border-left-color: #56a0f5;
+  border-left-color: var(--dot-blue);
 }
 .quote.green {
-  border-left-color: #5cc16c;
+  border-left-color: var(--dot-green);
 }
 .quote.red {
-  border-left-color: #eb5757;
+  border-left-color: var(--dot-red);
 }
 .meta {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  margin-top: 4px;
+  margin-top: 8px;
   font-size: 13px;
   color: var(--muted);
 }
 .meta .ask {
-  padding: 2px 10px;
   color: var(--accent);
-  font-size: 13px;
 }
 .note {
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 14px;
   white-space: pre-wrap;
 }
 .tag {
   margin-right: 6px;
-  padding: 0 6px;
-  border-radius: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
 }
 .answer {
-  margin-top: 6px;
+  margin-top: 8px;
   max-height: 6em;
   overflow: hidden;
   color: var(--muted);

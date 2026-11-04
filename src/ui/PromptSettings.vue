@@ -60,7 +60,7 @@ async function reset() {
 
 <style scoped>
 .prompts {
-  margin: 16px 0;
+  margin: 20px 0;
 }
 .field-label {
   font-weight: 500;
@@ -68,21 +68,19 @@ async function reset() {
 .row {
   display: flex;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .row input {
   flex: 1;
   min-width: 0;
-  font: inherit;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+}
+.row button {
+  padding: 0 14px;
 }
 .actions {
   display: flex;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .muted {
   color: var(--muted);

@@ -113,7 +113,7 @@ onMounted(async () => load(await getSelectedProviderId()))
         <input v-model="form.baseURL" type="url" placeholder="https://…" autocomplete="off" spellcheck="false" />
         <span class="muted small">
           请求会发到「接口地址/chat/completions」。{{ preset.hint ?? '' }}
-          <button v-if="preset.baseURL && form.baseURL !== preset.baseURL" class="link" @click="resetURL">恢复预设地址</button>
+          <button v-if="preset.baseURL && form.baseURL !== preset.baseURL" class="link mini ghost" @click="resetURL">恢复预设地址</button>
         </span>
       </label>
       <p v-if="form.baseURL.includes('{')" class="warn">地址里还有 { } 占位符，请替换成你自己的值。</p>
@@ -148,7 +148,7 @@ onMounted(async () => load(await getSelectedProviderId()))
         <button class="primary" @click="save">保存</button>
         <span class="muted">{{ saved }}</span>
       </div>
-      <p class="muted small">每个服务商的设置分开保存，切换服务商不用重新填。保存后可以到「诊断」页测试连通。</p>
+      <p class="muted small">每个服务商的设置分开保存，切换服务商不用重新填。保存后可以到「关于」里的诊断页测试连通。</p>
     </template>
   </section>
 </template>
@@ -158,19 +158,13 @@ label,
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 16px 0;
+  gap: 6px;
+  margin: 18px 0;
   font-weight: 500;
 }
 input,
 select {
-  font: inherit;
   font-weight: normal;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
 }
 .key-row {
   display: flex;
@@ -182,18 +176,14 @@ select {
 }
 .key-set {
   flex: 1;
-  padding: 8px 10px;
-  border: 1px dashed var(--border);
-  border-radius: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-m);
   color: var(--ok);
   font-weight: normal;
 }
 button.link {
-  border: none;
-  padding: 0 4px;
   color: var(--accent);
-  background: none;
-  font-size: inherit;
 }
 .actions {
   display: flex;

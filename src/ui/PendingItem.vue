@@ -49,13 +49,7 @@ async function save() {
 <style scoped>
 textarea {
   width: 100%;
-  font: inherit;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
   resize: vertical;
-  background: var(--bg);
-  color: var(--fg);
 }
 .row {
   display: flex;
@@ -66,11 +60,6 @@ textarea {
 .app-name {
   flex: 1;
   min-width: 100px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
 }
 .hint {
   color: var(--muted);
