@@ -8,6 +8,8 @@ import { readerState } from '../reader/state'
 import { swState } from '../platform/pwa'
 import { PROVIDER_PRESETS, getProviderConfig, getProviderSettings, type ProviderSettings } from '../ai/providers'
 import { ChatError, streamChat } from '../ai/client'
+import { navigate } from '../app/router'
+import Icon from '../ui/Icon.vue'
 
 // 集中展示只能在真机上确认的信息。「复制诊断报告」生成纯文本，不含 API Key。
 
@@ -150,6 +152,7 @@ onMounted(async () => {
 <template>
   <div class="diag">
     <div class="head">
+      <button class="ghost" aria-label="返回设置" @click="navigate('settings')"><Icon name="back" /></button>
       <h2>诊断</h2>
       <button class="primary" @click="copyReport">复制诊断报告</button>
       <span class="muted">{{ copied }}</span>

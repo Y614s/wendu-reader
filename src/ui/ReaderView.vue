@@ -1014,7 +1014,6 @@ onBeforeUnmount(() => {
       @remove="removeEditorNote"
     />
   </div>
-  </div>
 </template>
 
 <style scoped>
