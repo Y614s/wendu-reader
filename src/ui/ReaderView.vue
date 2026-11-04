@@ -199,7 +199,8 @@ async function savePositionNow() {
   if (restorePending !== null) return
   const pos = currentPosition()
   if (!doc.value || pos === null) return
-  await saveReadingPosition(doc.value.id, pos)
+  const el = contentEl.value!
+  await saveReadingPosition(doc.value.id, pos, progressOf(el.scrollTop, el.scrollHeight, el.clientHeight))
   readerState.positionSaves++
   readerState.lastSavedPosition = pos
 }

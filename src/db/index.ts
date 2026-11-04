@@ -10,6 +10,8 @@ export interface DocumentRecord {
   importedAt: number
   lastReadAt: number
   readingPosition: number | null
+  /** 阅读进度 0–1，滚动时和 readingPosition 一起保存。任务 03 新增，旧数据没有时显示未读 */
+  progress?: number
 }
 
 export interface AnchorRecord {

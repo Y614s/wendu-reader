@@ -69,6 +69,21 @@ describe('备份与恢复', () => {
     expect(b.conversations).toEqual(a.conversations)
   })
 
+  it('阅读进度随备份恢复；没有进度的旧文档也能恢复；进度不合法时拒绝', async () => {
+    await src.documents.update('d1', { progress: 0.42 })
+    const backup = await createBackup(src)
+    await restoreBackup(dst, parseBackup(JSON.stringify(backup)), 'replace')
+    expect((await dst.documents.get('d1'))!.progress).toBe(0.42)
+
+    const old = JSON.parse(JSON.stringify(backup))
+    delete old.tables.documents[0].progress
+    expect(() => parseBackup(JSON.stringify(old))).not.toThrow()
+
+    const bad = JSON.parse(JSON.stringify(backup))
+    bad.tables.documents[0].progress = 7
+    expect(() => parseBackup(JSON.stringify(bad))).toThrowError(/「progress」/)
+  })
+
   it('备份里没有任何 API Key 和本机诊断数据', async () => {
     const backup = await createBackup(src)
     const text = JSON.stringify(backup)

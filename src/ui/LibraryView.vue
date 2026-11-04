@@ -1,21 +1,43 @@
 <script setup lang="ts">
-import { onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import type { DocumentRecord } from '../db'
-import { listDocuments } from '../db/documents'
+import { listDocuments, loadDocStats, type DocStats } from '../db/documents'
+import { parseTags } from '../reader/markdown'
 import { appState, deleteDocument, importText, openDocument, showToast } from '../app/store'
 import { exportOriginal } from '../export/original'
 import { isTooLarge } from '../platform/incoming'
 
-// 最简书架：标题、导入时间、最近阅读；点开即读；可删除。完整书架（进度、标签）在第二版。
+// 书架：标题、进度、划线和问答数、标签；点开即读；可以按标签筛选、导出和删除。
 
 const docs = shallowRef<DocumentRecord[]>([])
 const fileInput = ref<HTMLInputElement | null>(null)
 const pasting = ref(false)
 const pasteText = ref('')
 const pasteName = ref('')
+const stats = shallowRef<Map<string, DocStats>>(new Map())
+const tagsOf = shallowRef<Map<string, string[]>>(new Map())
+const activeTag = ref<string | null>(null)
+
+const allTags = computed(() => [...new Set([...tagsOf.value.values()].flat())].sort((a, b) => a.localeCompare(b, 'zh-CN')))
+const shown = computed(() => (activeTag.value === null ? docs.value : docs.value.filter((d) => tagsOf.value.get(d.id)?.includes(activeTag.value!))))
 
 async function refresh() {
   docs.value = await listDocuments()
+  stats.value = await loadDocStats()
+  tagsOf.value = new Map(docs.value.map((d) => [d.id, parseTags(d.source)]))
+  if (activeTag.value !== null && !allTags.value.includes(activeTag.value)) activeTag.value = null
+}
+
+function progressText(d: DocumentRecord): string {
+  return d.progress === undefined ? '未读' : `${Math.round(d.progress * 100)}%`
+}
+
+function statsText(id: string): string {
+  const s = stats.value.get(id)
+  const parts: string[] = []
+  if (s?.highlights) parts.push(`${s.highlights} 处划线`)
+  if (s?.conversations) parts.push(`${s.conversations} 条问答`)
+  return parts.join(' · ')
 }
 
 function fmt(t: number) {
@@ -88,11 +110,23 @@ onMounted(refresh)
 
     <p v-if="docs.length === 0" class="empty">书架是空的。导入一个 md 文件，或者从微信等 App 里选「用其他应用打开」→「问读」。</p>
 
+    <div v-if="allTags.length" class="tag-bar">
+      <button :class="{ on: activeTag === null }" @click="activeTag = null">全部</button>
+      <button v-for="t in allTags" :key="t" :class="{ on: activeTag === t }" @click="activeTag = t">{{ t }}</button>
+    </div>
+
     <ul class="list">
-      <li v-for="d in docs" :key="d.id" :class="{ current: d.id === appState.currentDocId }">
+      <li v-for="d in shown" :key="d.id" :class="{ current: d.id === appState.currentDocId }">
         <button class="open" @click="openDocument(d.id)">
           <span class="title">{{ d.title }}</span>
-          <span class="meta">导入 {{ fmt(d.importedAt) }} · 最近阅读 {{ fmt(d.lastReadAt) }}</span>
+          <span class="meta">
+            <span class="progress">{{ progressText(d) }}</span>
+            <template v-if="statsText(d.id)"> · {{ statsText(d.id) }}</template>
+            · 最近阅读 {{ fmt(d.lastReadAt) }}
+          </span>
+          <span v-if="tagsOf.get(d.id)?.length" class="tags">
+            <span v-for="t in tagsOf.get(d.id)" :key="t" class="tag">{{ t }}</span>
+          </span>
         </button>
         <button class="side-btn" @click="exportDoc(d)">导出</button>
         <button class="side-btn del" @click="remove(d)">删除</button>
@@ -192,6 +226,38 @@ button:disabled {
 .meta {
   font-size: 13px;
   color: var(--muted);
+}
+.tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+.tag-bar button {
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 14px;
+}
+.tag-bar button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.progress {
+  color: var(--accent);
+  font-weight: 500;
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tag {
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
 }
 .side-btn {
   align-self: center;

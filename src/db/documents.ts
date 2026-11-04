@@ -81,6 +81,29 @@ export async function deleteDocument(id: string): Promise<void> {
   })
 }
 
-export async function saveReadingPosition(id: string, pos: number): Promise<void> {
-  await db.documents.update(id, { readingPosition: pos, lastReadAt: Date.now() })
+export async function saveReadingPosition(id: string, pos: number, progress: number): Promise<void> {
+  await db.documents.update(id, { readingPosition: pos, progress, lastReadAt: Date.now() })
+}
+
+export interface DocStats {
+  highlights: number
+  conversations: number
+}
+
+/** 书架用：每篇文档的划线数和问答数，从现有的表里统计 */
+export async function loadDocStats(): Promise<Map<string, DocStats>> {
+  const [anchors, highlights, conversations] = await Promise.all([db.anchors.toArray(), db.highlights.toArray(), db.conversations.toArray()])
+  const docOf = new Map(anchors.map((a) => [a.id, a.docId]))
+  const stats = new Map<string, DocStats>()
+  const of = (id: string) => {
+    let s = stats.get(id)
+    if (!s) stats.set(id, (s = { highlights: 0, conversations: 0 }))
+    return s
+  }
+  for (const h of highlights) {
+    const docId = docOf.get(h.anchorId)
+    if (docId) of(docId).highlights++
+  }
+  for (const c of conversations) of(c.docId).conversations++
+  return stats
 }

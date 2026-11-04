@@ -29,6 +29,32 @@ export function splitFrontMatter(source: string): { meta: Record<string, string>
   return { meta, body: source.slice(m[0].length) }
 }
 
+/**
+ * 从开头的 YAML 信息块解析标签，用到时才算，不存进数据库。
+ * 支持 tags: [a, b]、tags: a, b、tags: a，以及多行列表写法。
+ */
+export function parseTags(source: string): string[] {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(source)
+  if (!m) return []
+  const lines = m[1].split(/\r?\n/)
+  const i = lines.findIndex((l) => /^tags\s*:/.test(l))
+  if (i === -1) return []
+  const clean = (s: string) => s.trim().replace(/^['"]|['"]$/g, '').trim()
+  const inline = lines[i].replace(/^tags\s*:/, '').trim()
+  let tags: string[]
+  if (inline) {
+    tags = inline.replace(/^\[|\]$/g, '').split(/[,，]/).map(clean)
+  } else {
+    tags = []
+    for (const line of lines.slice(i + 1)) {
+      const item = /^\s*-\s+(.*)$/.exec(line)
+      if (!item) break
+      tags.push(clean(item[1]))
+    }
+  }
+  return [...new Set(tags.filter(Boolean))]
+}
+
 /** 标题取 YAML 的 title，没有就取第一个一级标题，再没有就用文件名。 */
 export function parseDoc(source: string, fallbackTitle: string): ParsedDoc {
   const { meta, body } = splitFrontMatter(source)

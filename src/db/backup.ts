@@ -95,6 +95,7 @@ function typeOk(v: unknown, t: FieldType): boolean {
 /** 表字段以外的校验：枚举取值、对话消息的结构、设置项的值。格式不对的数据进库后会让界面渲染出错 */
 function checkRow(table: keyof BackupTables, row: Record<string, unknown>, i: number): void {
   const fail = (field: string) => new BackupError(`「${table}」第 ${i + 1} 条数据的「${field}」缺失或格式不对。`)
+  if (table === 'documents' && row.progress !== undefined && !(typeof row.progress === 'number' && row.progress >= 0 && row.progress <= 1)) throw fail('progress')
   if (table === 'notes' && row.source !== undefined && row.source !== 'annotation' && row.source !== 'ai') throw fail('source')
   if (table === 'settings') {
     const check = BACKUP_SETTINGS.get(row.key as string)
