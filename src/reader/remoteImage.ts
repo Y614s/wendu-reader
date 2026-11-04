@@ -8,6 +8,15 @@ export function loadRemoteImage(el: HTMLElement): void {
   // 不把「从哪个页面来」告诉图片服务器；要在设 src 之前设好，图片请求一赋值就发出去了
   img.referrerPolicy = 'no-referrer'
   img.alt = el.dataset.alt ?? ''
+  // 加载失败（常见原因是网络连不上那个网站）时换回占位，提示可以重试，不留一个破图标
+  img.addEventListener(
+    'error',
+    () => {
+      el.dataset.failed = '1'
+      img.replaceWith(el)
+    },
+    { once: true },
+  )
   img.src = src
   el.replaceWith(img)
 }

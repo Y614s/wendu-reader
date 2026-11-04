@@ -44,6 +44,20 @@ describe('外部图片', () => {
     expect(root.querySelector('.remote-image')).toBeNull()
   })
 
+  it('加载失败时换回占位并标记，再点可以重试', () => {
+    const root = mount(renderMarkdown('![说明](https://a.example/b.png)'))
+    const ph = root.querySelector<HTMLElement>('.remote-image')!
+    loadRemoteImage(ph)
+    root.querySelector('img')!.dispatchEvent(new Event('error'))
+    expect(root.querySelector('img')).toBeNull()
+    const back = root.querySelector<HTMLElement>('.remote-image')!
+    expect(back.dataset.failed).toBe('1')
+    expect(back.dataset.src).toBe('https://a.example/b.png')
+
+    loadRemoteImage(back)
+    expect(root.querySelector('img')!.getAttribute('src')).toBe('https://a.example/b.png')
+  })
+
   it('内联图片不发请求，照常显示', () => {
     const root = mount(renderMarkdown('![x](data:image/png;base64,iVBORw0KGgo=)'))
     expect(root.querySelector('img')).not.toBeNull()
