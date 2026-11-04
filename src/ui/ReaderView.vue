@@ -453,6 +453,11 @@ function onContentClick(e: MouseEvent) {
   }
   const sel = document.getSelection()
   if (sel && !sel.isCollapsed) return
+  // 点正文就是搜完了，搜索框和高亮一起收起
+  if (searchOpen.value) {
+    closeSearch()
+    return
+  }
   // 选区已经被这一下点没了，工具栏跟着收起；这一下不再当作点击划线
   if (selectionState.cache) {
     dismissSelection()
@@ -558,6 +563,7 @@ watch(panel, (now) => {
   if (now) {
     dismissSelection()
     tapped.value = null
+    closeSearch()
   }
   const left = anchorLeftBehind(lastAsk.value?.anchorId ?? null, now)
   if (now?.mode === 'ask') lastAsk.value = now
@@ -810,6 +816,7 @@ watch(
       void refreshAnnotations()
     } else {
       closeOverlays()
+      closeSearch()
       void savePositionNow()
     }
   },
