@@ -1,4 +1,5 @@
 import { TextMap } from '../textmap'
+import { HIGHLIGHT_COLORS, normalizeColor, type HighlightColor } from './colors'
 
 // 划线显示：优先用 CSS Custom Highlight API，不改动 DOM；不支持时回退为 <mark> 包裹。
 // 点击命中：caretRangeFromPoint → 映射层位置 → 与锚点区间比较，不遍历 Range 调 getClientRects()。
@@ -10,6 +11,8 @@ export interface PaintItem {
   start: number
   end: number
   kind: PaintKind
+  /** kind 为 highlight 时的颜色，默认黄色 */
+  color?: string
 }
 
 const NAMES: Record<PaintKind, string> = {
@@ -24,6 +27,13 @@ const NAMES: Record<PaintKind, string> = {
 const PRIORITY: Partial<Record<PaintKind, number>> = { flash: 1, search: 2, searchCurrent: 3 }
 const MARK_ATTR = 'data-wendu-mark'
 
+const colorClass = (c: HighlightColor) => `wendu-hl-${c}`
+const ALL_CLASSES = [...Object.values(NAMES), ...HIGHLIGHT_COLORS.map(colorClass)]
+
+function classesOf(item: PaintItem): string[] {
+  return item.kind === 'highlight' ? [NAMES.highlight, colorClass(normalizeColor(item.color))] : [NAMES[item.kind]]
+}
+
 export function supportsCustomHighlight(): boolean {
   return typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined'
 }
@@ -36,11 +46,16 @@ export type PaintMode = 'custom-highlight' | 'mark'
 export function paint(root: Element, items: PaintItem[], mode: PaintMode = supportsCustomHighlight() ? 'custom-highlight' : 'mark'): TextMap {
   if (mode === 'custom-highlight') {
     const map = TextMap.build(root)
+    const register = (name: string, picked: PaintItem[], priority: number) => {
+      const hl = new Highlight(...picked.filter((i) => i.end > i.start).map((i) => map.toRange(i.start, i.end)))
+      hl.priority = priority
+      CSS.highlights.set(name, hl)
+    }
+    for (const color of HIGHLIGHT_COLORS) {
+      register(colorClass(color), items.filter((i) => i.kind === 'highlight' && normalizeColor(i.color) === color), 0)
+    }
     for (const kind of Object.keys(NAMES) as PaintKind[]) {
-      const ranges = items.filter((i) => i.kind === kind && i.end > i.start).map((i) => map.toRange(i.start, i.end))
-      const hl = new Highlight(...ranges)
-      hl.priority = PRIORITY[kind] ?? 0
-      CSS.highlights.set(NAMES[kind], hl)
+      if (kind !== 'highlight') register(NAMES[kind], items.filter((i) => i.kind === kind), PRIORITY[kind] ?? 0)
     }
     return map
   }
@@ -58,20 +73,20 @@ function clearMarks(root: Element): void {
       el.replaceWith(...Array.from(el.childNodes))
     } else {
       el.removeAttribute(MARK_ATTR)
-      el.classList.remove(...Object.values(NAMES))
+      el.classList.remove(...ALL_CLASSES)
     }
   }
   root.normalize()
 }
 
 function wrapWithMarks(map: TextMap, item: PaintItem): void {
-  const cls = NAMES[item.kind]
+  const classes = classesOf(item)
   // 倒序处理：拆分后面的文本节点不会影响前面片段记录的节点
   const segs = map.segments.filter((s) => s.kind !== 'break' && s.end > item.start && s.start < item.end).reverse()
   for (const s of segs) {
     if (s.kind === 'math') {
       s.node.setAttribute(MARK_ATTR, '')
-      s.node.classList.add(cls)
+      s.node.classList.add(...classes)
       continue
     }
     if (s.kind !== 'text') continue
@@ -81,7 +96,7 @@ function wrapWithMarks(map: TextMap, item: PaintItem): void {
     if (b < node.data.length) node.splitText(b)
     if (a > 0) node = node.splitText(a)
     const mark = node.ownerDocument.createElement('mark')
-    mark.className = cls
+    mark.className = classes.join(' ')
     mark.setAttribute(MARK_ATTR, '')
     node.replaceWith(mark)
     mark.appendChild(node)

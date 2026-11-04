@@ -218,6 +218,39 @@ describe('恶意备份', () => {
   })
 })
 
+describe('第三版的设置', () => {
+  it('颜色名称、最近颜色和快捷提问随备份恢复', async () => {
+    await src.settings.bulkPut([
+      { key: 'highlight.colorNames', value: { red: '待查' } },
+      { key: 'highlight.lastColor', value: 'red' },
+      { key: 'ai.quickPrompts', value: { anchor: ['甲'] } },
+    ])
+    await restoreBackup(dst, parseBackup(JSON.stringify(await createBackup(src))), 'replace')
+    expect((await dst.settings.get('highlight.colorNames'))?.value).toEqual({ red: '待查' })
+    expect((await dst.settings.get('highlight.lastColor'))?.value).toBe('red')
+    expect((await dst.settings.get('ai.quickPrompts'))?.value).toEqual({ anchor: ['甲'] })
+  })
+
+  it.each([
+    ['highlight.lastColor', 'purple'],
+    ['highlight.colorNames', { purple: 'x' }],
+    ['highlight.colorNames', { red: 'x'.repeat(50) }],
+    ['ai.quickPrompts', { anchor: 'x' }],
+    ['ai.quickPrompts', { other: ['x'] }],
+    ['ai.quickPrompts', { anchor: Array(9).fill('x') }],
+  ])('%s 取值不合法时拒绝恢复', async (key, value) => {
+    const b = await createBackup(src)
+    b.tables.settings.push({ key, value })
+    expect(() => parseBackup(JSON.stringify(b))).toThrowError(/「value」/)
+  })
+
+  it('划线里不认识的颜色不拒绝恢复', async () => {
+    const b = await createBackup(src)
+    b.tables.highlights[0].color = 'purple'
+    expect(() => parseBackup(JSON.stringify(b))).not.toThrow()
+  })
+})
+
 describe('清除全部数据', () => {
   it('文档、笔记、对话和所有设置（含 API Key）都清掉，只留诊断数据', async () => {
     await clearAllData(src)

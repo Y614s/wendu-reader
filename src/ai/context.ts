@@ -7,8 +7,25 @@ import type { ChatMessageInput } from './client'
 export const SYSTEM_PROMPT =
   '你是一个阅读助手。用户在读一篇 Markdown 文档，会选中一段原文或针对整篇文档向你提问。请用中文、简洁地回答，可以使用 Markdown 和 $...$ 公式。'
 
-/** 固定的快捷提问：平板上调键盘打字最打断阅读。整篇提问时「这段」「前文」说不通，换成适合整篇的 */
-export function quickPrompts(whole: boolean): string[] {
+export const MAX_PROMPTS = 8
+export const MAX_PROMPT_LENGTH = 200
+
+/** 自定义快捷提问，针对原文和整篇提问各一组；没有的一组用默认的 */
+export interface CustomPrompts {
+  anchor?: string[]
+  whole?: string[]
+}
+
+/** 去掉空项和重复，限制条数和长度 */
+export function normalizePrompts(list: string[]): string[] {
+  const clean = list.map((p) => p.trim().slice(0, MAX_PROMPT_LENGTH)).filter(Boolean)
+  return [...new Set(clean)].slice(0, MAX_PROMPTS)
+}
+
+/** 默认的快捷提问：平板上调键盘打字最打断阅读。整篇提问时「这段」「前文」说不通，换成适合整篇的 */
+export function quickPrompts(whole: boolean, custom?: CustomPrompts): string[] {
+  const own = custom?.[whole ? 'whole' : 'anchor']
+  if (own) return own
   return whole
     ? ['总结全文重点', '梳理文章脉络', '说得更通俗', '举个例子', '出一道自测题']
     : ['解释这段', '举个例子', '说得更通俗', '和前文有什么关系', '出一道自测题']

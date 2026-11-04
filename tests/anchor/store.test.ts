@@ -1,12 +1,33 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../../src/db'
-import { addHighlight, addNote, deleteAnchorIfUnused, removeHighlightAndNotes, saveAnchor } from '../../src/anchor/store'
+import { addHighlight, addNote, deleteAnchorIfUnused, removeHighlightAndNotes, saveAnchor, setHighlightColor } from '../../src/anchor/store'
 
 const doc = { id: 'd', title: 't', source: '', hash: 'h', importedAt: 0, lastReadAt: 0, readingPosition: null }
 
 beforeEach(async () => {
   await Promise.all([db.anchors.clear(), db.highlights.clear(), db.notes.clear(), db.conversations.clear()])
+})
+
+describe('划线颜色', () => {
+  it('默认黄色，可以指定颜色', async () => {
+    const a = await saveAnchor(doc, '红黑树', 0, 3)
+    expect((await addHighlight(a.id)).color).toBe('yellow')
+    expect((await addHighlight(a.id, 'red')).color).toBe('red')
+  })
+
+  it('改颜色只改划线；只有批注的锚点补一条划线', async () => {
+    const a = await saveAnchor(doc, '红黑树', 0, 3)
+    await addHighlight(a.id)
+    await setHighlightColor(a.id, 'blue')
+    expect((await db.highlights.toArray()).map((h) => h.color)).toEqual(['blue'])
+
+    const b = await saveAnchor(doc, '红黑树', 0, 2)
+    await addNote(b.id, '批注', 'annotation')
+    await setHighlightColor(b.id, 'green')
+    expect(await db.highlights.where('anchorId').equals(b.id).count()).toBe(1)
+    expect((await db.notes.toArray()).map((n) => n.text)).toEqual(['批注'])
+  })
 })
 
 describe('删除划线与清理锚点', () => {

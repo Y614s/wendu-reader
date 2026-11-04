@@ -1,7 +1,6 @@
 import { db, newId, type AnchorRecord, type ConversationRecord, type DocumentRecord, type HighlightRecord, type NoteRecord } from '../db'
 import { createSelector, locate } from '.'
-
-export const DEFAULT_COLOR = 'yellow'
+import { DEFAULT_COLOR, type HighlightColor } from '../highlight/colors'
 
 export async function saveAnchor(doc: DocumentRecord, text: string, start: number, end: number): Promise<AnchorRecord> {
   const anchor: AnchorRecord = { id: newId(), docId: doc.id, docHash: doc.hash, ...createSelector(text, start, end) }
@@ -9,10 +8,16 @@ export async function saveAnchor(doc: DocumentRecord, text: string, start: numbe
   return anchor
 }
 
-export async function addHighlight(anchorId: string): Promise<HighlightRecord> {
-  const hl: HighlightRecord = { id: newId(), anchorId, color: DEFAULT_COLOR, createdAt: Date.now() }
+export async function addHighlight(anchorId: string, color: HighlightColor = DEFAULT_COLOR): Promise<HighlightRecord> {
+  const hl: HighlightRecord = { id: newId(), anchorId, color, createdAt: Date.now() }
   await db.highlights.add(hl)
   return hl
+}
+
+/** 改一处划线的颜色；锚点上还没有划线时（只有批注）补一条 */
+export async function setHighlightColor(anchorId: string, color: HighlightColor): Promise<void> {
+  const n = await db.highlights.where('anchorId').equals(anchorId).modify({ color })
+  if (n === 0) await addHighlight(anchorId, color)
 }
 
 export interface DocAnnotations {

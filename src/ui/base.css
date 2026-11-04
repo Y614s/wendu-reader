@@ -15,7 +15,10 @@
   --panel-border: #b6c6dc;
   --panel-title: #0a3069;
   /* 划线 */
-  --hl-bg: rgba(255, 212, 0, 0.45);
+  --hl-yellow: rgba(255, 212, 0, 0.45);
+  --hl-blue: rgba(84, 174, 255, 0.35);
+  --hl-green: rgba(74, 194, 107, 0.35);
+  --hl-red: rgba(255, 129, 130, 0.4);
   --ask-line: #0969da;
   --flash-bg: rgba(9, 105, 218, 0.25);
   --search-bg: rgba(46, 160, 67, 0.3);
@@ -44,7 +47,10 @@
   --panel-head: #e5d8bb;
   --panel-border: #cdbb95;
   --panel-title: #5c3d14;
-  --hl-bg: rgba(226, 170, 40, 0.4);
+  --hl-yellow: rgba(226, 170, 40, 0.4);
+  --hl-blue: rgba(84, 140, 200, 0.32);
+  --hl-green: rgba(90, 160, 90, 0.32);
+  --hl-red: rgba(214, 100, 90, 0.34);
   --ask-line: #8a5a1f;
   --flash-bg: rgba(138, 90, 31, 0.28);
   --search-bg: rgba(74, 130, 60, 0.32);
@@ -68,7 +74,10 @@
   --panel-head: #1b2a40;
   --panel-border: #2f4a6e;
   --panel-title: #a5c8ff;
-  --hl-bg: rgba(187, 128, 9, 0.45);
+  --hl-yellow: rgba(187, 128, 9, 0.45);
+  --hl-blue: rgba(56, 139, 253, 0.35);
+  --hl-green: rgba(46, 160, 67, 0.35);
+  --hl-red: rgba(248, 81, 73, 0.35);
   --ask-line: #4493f8;
   --flash-bg: rgba(68, 147, 248, 0.35);
   --search-bg: rgba(63, 185, 80, 0.3);
@@ -349,8 +358,20 @@ body,
 /* ---------- 划线 ---------- */
 
 /* Custom Highlight API */
-::highlight(wendu-hl) {
-  background-color: var(--hl-bg);
+::highlight(wendu-hl-yellow) {
+  background-color: var(--hl-yellow);
+}
+
+::highlight(wendu-hl-blue) {
+  background-color: var(--hl-blue);
+}
+
+::highlight(wendu-hl-green) {
+  background-color: var(--hl-green);
+}
+
+::highlight(wendu-hl-red) {
+  background-color: var(--hl-red);
 }
 
 ::highlight(wendu-ask) {
@@ -377,8 +398,47 @@ body,
 mark.wendu-hl,
 .katex.wendu-hl,
 .mermaid-block.wendu-hl {
-  background-color: var(--hl-bg);
   color: inherit;
+}
+
+.wendu-hl-yellow {
+  background-color: var(--hl-yellow);
+}
+
+.wendu-hl-blue {
+  background-color: var(--hl-blue);
+}
+
+.wendu-hl-green {
+  background-color: var(--hl-green);
+}
+
+.wendu-hl-red {
+  background-color: var(--hl-red);
+}
+
+/* 颜色点：工具栏、笔记页和筛选条共用 */
+.color-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.color-dot.yellow {
+  background: #f2c94c;
+}
+
+.color-dot.blue {
+  background: #56a0f5;
+}
+
+.color-dot.green {
+  background: #5cc16c;
+}
+
+.color-dot.red {
+  background: #eb5757;
 }
 
 mark.wendu-ask {

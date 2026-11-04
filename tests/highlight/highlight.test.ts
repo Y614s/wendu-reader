@@ -50,6 +50,30 @@ describe('mark 回退', () => {
   })
 })
 
+describe('四色的 mark 回退', () => {
+  it.each(['yellow', 'blue', 'green', 'red'])('%s 有自己的 class', (color) => {
+    const root = mount(MD)
+    const text = TextMap.build(root).text
+    paint(root, [{ anchorId: 'a', start: text.indexOf('自平衡'), end: text.indexOf('自平衡') + 3, kind: 'highlight', color }], 'mark')
+    expect(root.querySelector(`mark.wendu-hl-${color}`)!.textContent).toBe('自平衡')
+  })
+
+  it('不认识的颜色和没写颜色都按黄色', () => {
+    const root = mount(MD)
+    paint(root, [{ anchorId: 'a', start: 0, end: 2, kind: 'highlight', color: 'purple' }, { anchorId: 'b', start: 2, end: 3, kind: 'highlight' }], 'mark')
+    expect(root.querySelectorAll('mark.wendu-hl-yellow')).toHaveLength(2)
+  })
+
+  it('公式整体带上颜色 class，重画时清掉', () => {
+    const root = mount(MD)
+    const text = TextMap.build(root).text
+    paint(root, [{ anchorId: 'a', start: text.indexOf('高度'), end: text.indexOf('有上界'), kind: 'highlight', color: 'red' }], 'mark')
+    expect(root.querySelector('.katex')!.classList.contains('wendu-hl-red')).toBe(true)
+    paint(root, [], 'mark')
+    expect(root.querySelector('.katex')!.classList.contains('wendu-hl-red')).toBe(false)
+  })
+})
+
 describe('搜索高亮的 mark 回退', () => {
   it('和划线用不同的 class，清除搜索不动划线', () => {
     const root = mount(MD)

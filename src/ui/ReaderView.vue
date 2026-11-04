@@ -5,7 +5,7 @@ import { saveReadingPosition } from '../db/documents'
 import { shouldRemindBackup } from '../db/backup'
 import { appState, showToast } from '../app/store'
 import { navigate } from '../app/router'
-import { prefs } from '../app/prefs'
+import { prefs, setLastColor } from '../app/prefs'
 import { resolvedTheme } from '../app/theme'
 import { renderMarkdown, type CodeHighlighter } from '../reader/markdown'
 import { getCodeHighlighter } from '../reader/highlighter'
@@ -16,10 +16,12 @@ import { buildNoteGroups } from '../reader/notes'
 import { findMatches, firstMatchFrom, stepMatch, type SearchMatch } from '../reader/search'
 import { renderMermaidBlocks } from '../reader/mermaid'
 import type { TextMap } from '../textmap'
+import { HIGHLIGHT_COLORS, colorName, type HighlightColor } from '../highlight/colors'
 import { hitTest, paint, positionFromPoint, supportsCustomHighlight, type PaintItem } from '../highlight'
 import {
   addHighlight,
   addNote,
+  setHighlightColor,
   deleteNote,
   loadAnnotations,
   locateAnchors,
@@ -51,7 +53,8 @@ const contentEl = ref<HTMLElement | null>(null)
 const doc = shallowRef<DocumentRecord | null>(null)
 const located = shallowRef<LocatedAnchor[]>([])
 const orphans = shallowRef<AnchorRecord[]>([])
-const highlightAnchorIds = shallowRef<Set<string>>(new Set())
+/** 有划线的锚点 → 颜色 */
+const highlightAnchorIds = shallowRef<Map<string, string>>(new Map())
 const notes = shallowRef<NoteRecord[]>([])
 const conversations = shallowRef<ConversationRecord[]>([])
 const headings = shallowRef<Heading[]>([])
@@ -105,7 +108,9 @@ function paintItems(): PaintItem[] {
   for (const l of located.value) {
     const id = l.anchor.id
     // 有批注但没划线的锚点也画出来，否则点不到
-    if (highlightAnchorIds.value.has(id) || noteAnchors.has(id)) items.push({ anchorId: id, start: l.start, end: l.end, kind: 'highlight' })
+    if (highlightAnchorIds.value.has(id) || noteAnchors.has(id)) {
+      items.push({ anchorId: id, start: l.start, end: l.end, kind: 'highlight', color: highlightAnchorIds.value.get(id) })
+    }
     if (convAnchors.has(id)) items.push({ anchorId: id, start: l.start, end: l.end, kind: 'ask' })
     if (flashId.value === id) items.push({ anchorId: id, start: l.start, end: l.end, kind: 'flash' })
   }
@@ -127,7 +132,7 @@ async function refreshAnnotations() {
   const r = locateAnchors(map.text, ann.anchors)
   located.value = r.located
   orphans.value = r.orphans
-  highlightAnchorIds.value = new Set(ann.highlights.map((h) => h.anchorId))
+  highlightAnchorIds.value = new Map(ann.highlights.map((h) => [h.anchorId, h.color]))
   notes.value = ann.notes
   conversations.value = ann.conversations.sort((a, b) => a.createdAt - b.createdAt)
   readerState.anchors = ann.anchors.length
@@ -354,11 +359,12 @@ function finishSelection() {
   document.getSelection()?.removeAllRanges()
 }
 
-async function onHighlight() {
+async function onHighlight(color: HighlightColor) {
   const c = takeCache('划线')
   if (!c || !doc.value || !map) return
   const anchor = await saveAnchor(doc.value, map.text, c.start, c.end)
-  await addHighlight(anchor.id)
+  await addHighlight(anchor.id, color)
+  await setLastColor(color)
   finishSelection()
   await refreshAnnotations()
 }
@@ -368,7 +374,7 @@ async function onAnnotate() {
   if (!c || !doc.value || !map) return
   // 批注 = 划线 + 一段文字；先存锚点和划线，取消写批注也保留划线
   const anchor = await saveAnchor(doc.value, map.text, c.start, c.end)
-  await addHighlight(anchor.id)
+  await addHighlight(anchor.id, prefs.lastColor)
   finishSelection()
   await refreshAnnotations()
   editor.value = { anchorId: anchor.id, quote: c.text, note: null }
@@ -536,6 +542,14 @@ async function onDeleteConversation(conv: ConversationRecord) {
   if (conv.anchorId) await cleanupAnchor(conv.anchorId)
 }
 
+async function recolorTapped(color: HighlightColor) {
+  if (!tapped.value) return
+  for (const id of tapped.value.highlightIds) await setHighlightColor(id, color)
+  await setLastColor(color)
+  tapped.value = null
+  await refreshAnnotations()
+}
+
 async function removeTappedHighlight() {
   if (!tapped.value) return
   const ids = tapped.value.highlightIds
@@ -573,7 +587,7 @@ async function saveAnswerAsNote(text: string) {
   if (panel.value?.mode !== 'ask' || !panel.value.anchorId) return
   await addNote(panel.value.anchorId, text, 'ai')
   // 存为笔记也算划线，原文上能看到
-  if (!highlightAnchorIds.value.has(panel.value.anchorId)) await addHighlight(panel.value.anchorId)
+  if (!highlightAnchorIds.value.has(panel.value.anchorId)) await addHighlight(panel.value.anchorId, prefs.lastColor)
   await refreshAnnotations()
   showToast('已存为笔记')
 }
@@ -630,9 +644,11 @@ async function exportNotes() {
       start: l.start,
       quote: m.textWithTex(l.start, l.end),
       highlighted: highlightAnchorIds.value.has(l.anchor.id),
+      color: highlightAnchorIds.value.get(l.anchor.id),
     })),
     // 孤立锚点只有保存时的纯文本，公式占位符换成文字说明
-    orphans: orphans.value.map((a) => ({ id: a.id, quote: a.quote.replace(/￼/g, '[公式]'), highlighted: highlightAnchorIds.value.has(a.id) })),
+    orphans: orphans.value.map((a) => ({ id: a.id, quote: a.quote.replace(/￼/g, '[公式]'), highlighted: highlightAnchorIds.value.has(a.id), color: highlightAnchorIds.value.get(a.id) })),
+    colorNames: prefs.colorNames,
     notes: notes.value,
     conversations: conversations.value,
   })
@@ -872,7 +888,19 @@ onBeforeUnmount(() => {
 
     <div v-if="cache" class="toolbar" :style="{ bottom: toolbarBottom + 'px' }" @pointerdown.prevent>
       <span class="sel-info">{{ cache.plain.length }} 字{{ cache.expanded ? ' · 含整块公式' : '' }}</span>
-      <button @pointerdown.prevent @click="onHighlight">划线</button>
+      <span class="dots">
+        <button
+          v-for="c in HIGHLIGHT_COLORS"
+          :key="c"
+          class="dot-btn"
+          :aria-label="`划线：${colorName(c, prefs.colorNames)}`"
+          :title="colorName(c, prefs.colorNames)"
+          @pointerdown.prevent
+          @click="onHighlight(c)"
+        >
+          <span class="color-dot" :class="c" />
+        </button>
+      </span>
       <button @pointerdown.prevent @click="onAnnotate">批注</button>
       <button @pointerdown.prevent @click="onAsk">侧栏问</button>
       <button @pointerdown.prevent @click="onSendToApp">发到 App</button>
@@ -881,6 +909,18 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else-if="tapped" class="toolbar" :style="{ bottom: toolbarBottom + 'px' }">
+      <span v-if="tapped.highlightIds.length" class="dots">
+        <button
+          v-for="c in HIGHLIGHT_COLORS"
+          :key="c"
+          class="dot-btn"
+          :aria-label="`改成：${colorName(c, prefs.colorNames)}`"
+          :title="colorName(c, prefs.colorNames)"
+          @click="recolorTapped(c)"
+        >
+          <span class="color-dot" :class="c" />
+        </button>
+      </span>
       <button v-if="tapped.highlightIds.length" @click="openEditorForTapped">{{ tappedNote ? '编辑批注' : '写批注' }}</button>
       <button v-if="tapped.convAnchorId" @click="openAnchorPanel(tapped.convAnchorId)">查看对话（{{ tapped.convCount }}）</button>
       <button v-if="tapped.highlightIds.length" @click="removeTappedHighlight">删除划线</button>
@@ -1168,6 +1208,10 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 2px;
   align-items: center;
+  /* 窄屏放不下时分两行 */
+  flex-wrap: wrap;
+  justify-content: center;
+  width: max-content;
   max-width: calc(100vw - 16px);
   padding: 6px;
   background: var(--bar-bg);
@@ -1189,6 +1233,14 @@ onBeforeUnmount(() => {
 }
 .toolbar button:active {
   background: rgba(255, 255, 255, 0.15);
+}
+.dots {
+  display: inline-flex;
+  align-items: center;
+}
+.toolbar .dot-btn {
+  display: inline-flex;
+  padding: 10px 7px;
 }
 .toolbar .cancel {
   padding: 10px 12px;

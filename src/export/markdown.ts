@@ -1,5 +1,6 @@
 import type { ConversationRecord, NoteRecord } from '../db'
 import { answeredPairs } from '../ai/history'
+import { colorName, type ColorNames } from '../highlight/colors'
 
 // 单篇导出 md，格式按 docs/plan.md「导出与备份」里的样例：
 // YAML 信息 → 按章节组织 → 原文用引用块，下面接批注、AI 回答摘录、问答、待补充 → 原文已找不到的 → 整篇提问。
@@ -10,6 +11,7 @@ export interface ExportAnchor {
   /** 原文（公式已换回 TeX） */
   quote: string
   highlighted: boolean
+  color?: string
 }
 
 export interface ExportInput {
@@ -21,7 +23,9 @@ export interface ExportInput {
   sections: { title: string; pos: number }[]
   anchors: ExportAnchor[]
   /** 原文找不到的锚点；quote 是保存时的原文 */
-  orphans: { id: string; quote: string; highlighted: boolean }[]
+  orphans: { id: string; quote: string; highlighted: boolean; color?: string }[]
+  /** 颜色的自定义名称 */
+  colorNames?: ColorNames
   notes: NoteRecord[]
   conversations: ConversationRecord[]
 }
@@ -81,8 +85,9 @@ function conversationBlock(c: ConversationRecord): string | null {
   return [`**问答**（侧栏问 · ${c.provider}${c.model ? ' · ' + c.model : ''} · ${formatDate(c.createdAt)}）`, '', ...lines].join('\n')
 }
 
-function anchorBlock(quote: string, notes: NoteRecord[], convs: ConversationRecord[]): string {
+function anchorBlock(quote: string, category: string | null, notes: NoteRecord[], convs: ConversationRecord[]): string {
   const parts = [blockquote(quote)]
+  if (category) parts.push(`**分类**：${category}`)
   for (const n of notes) parts.push(noteBlock(n.source === 'ai' ? 'AI 回答摘录' : '批注', n.text))
   for (const c of convs) {
     const b = conversationBlock(c)
@@ -108,6 +113,7 @@ export function exportMarkdown(input: ExportInput): string {
     input.conversations.filter((c) => c.anchorId === id).sort((a, b) => a.createdAt - b.createdAt)
   const hasContent = (id: string, highlighted: boolean) =>
     highlighted || notesOf(id).length > 0 || convsOf(id).some((c) => conversationBlock(c) !== null)
+  const categoryOf = (a: { highlighted: boolean; color?: string }) => (a.highlighted ? colorName(a.color, input.colorNames) : null)
 
   let section: number | null = null
   const anchors = [...input.anchors].sort((a, b) => a.start - b.start)
@@ -121,14 +127,14 @@ export function exportMarkdown(input: ExportInput): string {
       out.push('', `## ${input.sections[s].title}`)
       section = s
     }
-    out.push('', anchorBlock(a.quote, notesOf(a.id), convsOf(a.id)))
+    out.push('', anchorBlock(a.quote, categoryOf(a), notesOf(a.id), convsOf(a.id)))
   }
 
   // 什么都没留下的空锚点即使找不到原文也不导出
   const orphans = input.orphans.filter((o) => hasContent(o.id, o.highlighted))
   if (orphans.length) {
     out.push('', '## 原文已找不到的笔记', '', '文档改动后，下面这些笔记对应的原文已经找不到了。')
-    for (const o of orphans) out.push('', anchorBlock(o.quote, notesOf(o.id), convsOf(o.id)))
+    for (const o of orphans) out.push('', anchorBlock(o.quote, categoryOf(o), notesOf(o.id), convsOf(o.id)))
   }
 
   const wholeLines = convsOf(null)

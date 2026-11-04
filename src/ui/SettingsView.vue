@@ -2,7 +2,9 @@
 import { onMounted, ref } from 'vue'
 import ProviderSettings from './ProviderSettings.vue'
 import TypographySettings from './TypographySettings.vue'
-import { prefs, setContextBudget, setEdgeTap } from '../app/prefs'
+import PromptSettings from './PromptSettings.vue'
+import { prefs, setColorName, setContextBudget, setEdgeTap } from '../app/prefs'
+import { DEFAULT_COLOR_NAMES, HIGHLIGHT_COLORS, MAX_COLOR_NAME } from '../highlight/colors'
 import { showToast } from '../app/store'
 import { db, getSetting, setSetting } from '../db'
 import { BackupError, clearAllData, createBackup, parseBackup, restoreBackup, REMIND_AFTER_MS, type RestoreMode } from '../db/backup'
@@ -140,6 +142,27 @@ onMounted(async () => {
     </section>
 
     <section>
+      <h2>划线颜色</h2>
+      <p class="muted small">名称用在笔记页和导出里，留空用默认名称。红色划线会进疑问清单。</p>
+      <div v-for="c in HIGHLIGHT_COLORS" :key="c" class="color-row">
+        <span class="color-dot" :class="c" />
+        <input
+          :value="prefs.colorNames[c] ?? ''"
+          :placeholder="DEFAULT_COLOR_NAMES[c]"
+          :maxlength="MAX_COLOR_NAME"
+          @change="setColorName(c, ($event.target as HTMLInputElement).value)"
+        />
+      </div>
+    </section>
+
+    <section>
+      <h2>快捷提问</h2>
+      <p class="muted small">显示在侧栏输入框上方，点一下直接发送。</p>
+      <PromptSettings group="anchor" title="针对选中的原文" />
+      <PromptSettings group="whole" title="针对整篇文档" />
+    </section>
+
+    <section>
       <h2>备份与恢复</h2>
       <p>
         上次备份：<strong>{{ lastExportAt ? fmt(lastExportAt) : '还没有备份过' }}</strong>
@@ -172,6 +195,20 @@ onMounted(async () => {
 section + section {
   margin-top: 32px;
   border-top: 1px solid var(--border);
+}
+.color-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0;
+}
+.color-row input {
+  font: inherit;
+  width: 160px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
 }
 .field,
 .check {

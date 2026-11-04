@@ -63,7 +63,7 @@ describe('导出 md', () => {
       anchors: [
         { id: 'a1', start: plain.start, quote: map.textWithTex(plain.start, plain.end), highlighted: true },
         { id: 'a2', start: formula.start, quote: map.textWithTex(formula.start, formula.end), highlighted: false },
-        { id: 'a3', start: repeated.start, quote: map.textWithTex(repeated.start, repeated.end), highlighted: true },
+        { id: 'a3', start: repeated.start, quote: map.textWithTex(repeated.start, repeated.end), highlighted: true, color: 'red' },
         { id: 'a4', start: block.start, quote: map.textWithTex(block.start, block.end), highlighted: false },
         { id: 'a5', start: plain.start + 2, quote: '只建了锚点、什么都没有', highlighted: false },
       ],
@@ -119,6 +119,8 @@ exported: 2026-11-03
 
 > 红黑树是一种自平衡的二叉查找树。
 
+**分类**：重点
+
 **批注**：和 AVL 树比，旋转更少。
 
 ## 2. 行内公式
@@ -143,6 +145,8 @@ exported: 2026-11-03
 - 答：这是归纳法的结论。
 
 > 查找、插入和删除的时间复杂度都是对数级别。
+
+**分类**：疑问
 
 **待补充**（发到 App）：问题已发出，回答还没填。
 
@@ -178,6 +182,24 @@ exported: 2026-11-03
       conversations: [],
     })
     expect(out).toContain('> 第一行\n>\n> 第三行')
+  })
+})
+
+describe('导出颜色', () => {
+  const base: ExportInput = { title: 't', source: 't.md', date: '2026-11-03', sections: [], anchors: [], orphans: [], notes: [], conversations: [] }
+
+  it('四种颜色用默认名称，自定义名称优先，留空的用默认', () => {
+    const anchors = (['yellow', 'blue', 'green', 'red'] as const).map((color, i) => ({ id: color, start: i, quote: color, highlighted: true, color }))
+    expect(exportMarkdown({ ...base, anchors })).toContain('> yellow\n\n**分类**：重点\n\n> blue\n\n**分类**：概念\n\n> green\n\n**分类**：想法\n\n> red\n\n**分类**：疑问')
+    const out = exportMarkdown({ ...base, anchors, colorNames: { red: '待查', blue: '' } })
+    expect(out).toContain('**分类**：待查')
+    expect(out).toContain('**分类**：概念')
+  })
+
+  it('不认识的颜色按黄色，没有划线的不写分类', () => {
+    expect(exportMarkdown({ ...base, anchors: [{ id: 'a', start: 0, quote: 'q', highlighted: true, color: 'purple' }] })).toContain('**分类**：重点')
+    const out = exportMarkdown({ ...base, anchors: [{ id: 'a', start: 0, quote: 'q', highlighted: false }], notes: [note('n', 'a', '批注')] })
+    expect(out).not.toContain('分类')
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildContext, estimateTokens, quickPrompts, splitBlocks, type ContextRequest } from '../../src/ai/context'
+import { MAX_PROMPTS, MAX_PROMPT_LENGTH, buildContext, estimateTokens, normalizePrompts, quickPrompts, splitBlocks, type ContextRequest } from '../../src/ai/context'
 
 // 三节，每节三段；每段 100 个汉字左右，方便估算
 const para = (tag: string) => `${tag}` + '内容'.repeat(50)
@@ -40,6 +40,20 @@ describe('quickPrompts', () => {
     const whole = quickPrompts(true)
     expect(whole).toHaveLength(5)
     expect(whole.join()).not.toMatch(/这段|前文/)
+  })
+})
+
+describe('自定义快捷提问', () => {
+  it('自定义的优先，另一组仍用默认的，空数组表示不显示', () => {
+    expect(quickPrompts(false, { anchor: ['甲'] })).toEqual(['甲'])
+    expect(quickPrompts(true, { anchor: ['甲'] })).toEqual(quickPrompts(true))
+    expect(quickPrompts(false, { anchor: [] })).toEqual([])
+  })
+
+  it('去掉空项和重复，限制条数和长度', () => {
+    expect(normalizePrompts([' 甲 ', '', '甲', '乙'])).toEqual(['甲', '乙'])
+    expect(normalizePrompts(Array.from({ length: 20 }, (_, i) => String(i)))).toHaveLength(MAX_PROMPTS)
+    expect(normalizePrompts(['字'.repeat(500)])[0]).toHaveLength(MAX_PROMPT_LENGTH)
   })
 })
 

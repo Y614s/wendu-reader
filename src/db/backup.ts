@@ -1,4 +1,6 @@
 import type { EntityTable } from 'dexie'
+import { MAX_PROMPTS, MAX_PROMPT_LENGTH } from '../ai/context'
+import { HIGHLIGHT_COLORS, MAX_COLOR_NAME } from '../highlight/colors'
 import type { AnchorRecord, ConversationRecord, DocumentRecord, HighlightRecord, NoteRecord, SettingRecord, WenduDB } from '.'
 
 // 全量备份与恢复。
@@ -29,6 +31,9 @@ export type RestoreMode = 'merge' | 'replace'
 
 export class BackupError extends Error {}
 
+const isPromptList = (v: unknown) => Array.isArray(v) && v.length <= MAX_PROMPTS && v.every((p) => typeof p === 'string' && p.length <= MAX_PROMPT_LENGTH)
+const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
+
 const isNumberOrNull = (v: unknown) => v === null || (typeof v === 'number' && Number.isFinite(v))
 const isStringOrNull = (v: unknown) => v === null || typeof v === 'string'
 
@@ -42,6 +47,9 @@ const BACKUP_SETTINGS = new Map<string, (v: unknown) => boolean>([
   ['ui.pageWidth', (v) => v === 'narrow' || v === 'normal' || v === 'wide'],
   ['ui.edgeTap', (v) => typeof v === 'boolean'],
   ['ai.contextBudget', (v) => typeof v === 'number' && Number.isFinite(v) && v > 0],
+  ['highlight.lastColor', (v) => (HIGHLIGHT_COLORS as readonly unknown[]).includes(v)],
+  ['highlight.colorNames', (v) => isRecord(v) && Object.entries(v).every(([k, n]) => (HIGHLIGHT_COLORS as readonly string[]).includes(k) && typeof n === 'string' && n.length <= MAX_COLOR_NAME)],
+  ['ai.quickPrompts', (v) => isRecord(v) && Object.entries(v).every(([k, l]) => (k === 'anchor' || k === 'whole') && isPromptList(l))],
   ['backup.since', isNumberOrNull],
   ['backup.lastExportAt', isNumberOrNull],
   ['backup.lastRemindedAt', isNumberOrNull],

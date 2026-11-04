@@ -3,6 +3,8 @@ import { nextTick, onMounted, ref } from 'vue'
 import type { ConversationRecord, NoteRecord } from '../db'
 import type { NoteGroups } from '../reader/notes'
 import { renderAnswer } from '../reader/answer'
+import { colorName } from '../highlight/colors'
+import { prefs } from '../app/prefs'
 import PendingItem from './PendingItem.vue'
 
 // 笔记侧栏：本文的划线、批注、问答按原文顺序排列，点一下跳回原文。
@@ -66,7 +68,8 @@ onMounted(async () => {
         还没有笔记。选中文字后可以划线、写批注或提问。
       </p>
       <div v-for="e in groups.entries" :key="e.anchorId" class="item">
-        <button class="quote" :class="{ hl: e.highlighted }" @click="emit('jump', e.anchorId)">{{ e.quote }}</button>
+        <button class="quote" :class="e.highlighted ? e.color : ''" @click="emit('jump', e.anchorId)">{{ e.quote }}</button>
+        <span v-if="e.highlighted" class="tag"><span class="color-dot small" :class="e.color" />{{ colorName(e.color, prefs.colorNames) }}</span>
         <div v-for="n in e.notes" :key="n.id" class="note" @click="emit('editNote', n)">
           <span class="tag" :class="n.source === 'ai' ? 'ai' : ''">{{ n.source === 'ai' ? 'AI 回答摘录' : '批注' }}</span>
           <!-- AI 回答摘录是 Markdown，按回答的样式渲染；自己写的批注按纯文本显示 -->
@@ -153,8 +156,22 @@ h4 {
   max-height: 7.5em;
   overflow: hidden;
 }
-.quote.hl {
-  border-left-color: #d4a72c;
+.quote.yellow {
+  border-left-color: #f2c94c;
+}
+.quote.blue {
+  border-left-color: #56a0f5;
+}
+.quote.green {
+  border-left-color: #5cc16c;
+}
+.quote.red {
+  border-left-color: #eb5757;
+}
+.color-dot.small {
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
 }
 .quote.static {
   color: var(--muted);

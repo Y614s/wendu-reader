@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { getSetting, setSetting } from '../db'
-import { DEFAULT_BUDGET } from '../ai/context'
+import { DEFAULT_BUDGET, normalizePrompts, type CustomPrompts } from '../ai/context'
+import { DEFAULT_COLOR, MAX_COLOR_NAME, normalizeColor, type ColorNames, type HighlightColor } from '../highlight/colors'
 
 // 阅读和提问相关的偏好。主题单独在 theme.ts。
 
@@ -27,6 +28,12 @@ export const prefs = reactive({
   fontSize: 18,
   lineHeight: 1.8 as number,
   pageWidth: 'normal' as PageWidth,
+  /** 颜色的自定义名称，留空的用默认名称 */
+  colorNames: {} as ColorNames,
+  /** 最近一次用过的颜色，「批注」用它 */
+  lastColor: DEFAULT_COLOR as HighlightColor,
+  /** 自定义快捷提问；没改过的一组用默认的 */
+  quickPrompts: {} as CustomPrompts,
 })
 
 /** 排版写到 CSS 变量上，正文样式直接用，改了立即生效 */
@@ -43,6 +50,9 @@ export async function loadPrefs(): Promise<void> {
   prefs.fontSize = await getSetting('ui.fontSize', 18)
   prefs.lineHeight = await getSetting('ui.lineHeight', 1.8)
   prefs.pageWidth = await getSetting<PageWidth>('ui.pageWidth', 'normal')
+  prefs.colorNames = await getSetting<ColorNames>('highlight.colorNames', {})
+  prefs.lastColor = normalizeColor(await getSetting<string | null>('highlight.lastColor', null))
+  prefs.quickPrompts = await getSetting<CustomPrompts>('ai.quickPrompts', {})
   applyTypography()
 }
 
@@ -54,6 +64,29 @@ export async function setEdgeTap(on: boolean): Promise<void> {
 export async function setContextBudget(n: number): Promise<void> {
   prefs.contextBudget = Math.max(500, Math.min(200000, Math.round(n)))
   await setSetting('ai.contextBudget', prefs.contextBudget)
+}
+
+export async function setColorName(color: HighlightColor, name: string): Promise<void> {
+  const next = { ...prefs.colorNames }
+  const trimmed = name.trim().slice(0, MAX_COLOR_NAME)
+  if (trimmed) next[color] = trimmed
+  else delete next[color]
+  prefs.colorNames = next
+  await setSetting('highlight.colorNames', next)
+}
+
+export async function setLastColor(color: HighlightColor): Promise<void> {
+  prefs.lastColor = color
+  await setSetting('highlight.lastColor', color)
+}
+
+/** 保存一组快捷提问；传 null 恢复默认 */
+export async function setQuickPrompts(group: keyof CustomPrompts, list: string[] | null): Promise<void> {
+  const next = { ...prefs.quickPrompts }
+  if (list === null) delete next[group]
+  else next[group] = normalizePrompts(list)
+  prefs.quickPrompts = next
+  await setSetting('ai.quickPrompts', next)
 }
 
 export async function setFontSize(n: number): Promise<void> {

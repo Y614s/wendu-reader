@@ -1,5 +1,6 @@
 import type { AnchorRecord, ConversationRecord, NoteRecord } from '../db'
 import type { LocatedAnchor } from '../anchor/store'
+import { normalizeColor, type HighlightColor } from '../highlight/colors'
 
 // 笔记侧栏的分组：待补充 → 按原文顺序的笔记 → 原文已找不到的 → 整篇提问
 
@@ -9,6 +10,7 @@ export interface NoteEntry {
   start: number | null
   quote: string
   highlighted: boolean
+  color: HighlightColor
   notes: NoteRecord[]
   /** 已完成的对话（待补充的单独分组） */
   convs: ConversationRecord[]
@@ -24,7 +26,8 @@ export interface NoteGroups {
 export function buildNoteGroups(opts: {
   located: LocatedAnchor[]
   orphans: AnchorRecord[]
-  highlighted: Set<string>
+  /** 锚点 id → 划线颜色 */
+  highlighted: Map<string, string>
   notes: NoteRecord[]
   conversations: ConversationRecord[]
   /** 取原文（公式换回 TeX） */
@@ -35,7 +38,15 @@ export function buildNoteGroups(opts: {
   const doneOf = (id: string) => opts.conversations.filter((c) => c.anchorId === id && c.status === 'done').sort(byCreated)
 
   const entry = (anchorId: string, start: number | null, quote: string): NoteEntry | null => {
-    const e = { anchorId, start, quote, highlighted: opts.highlighted.has(anchorId), notes: notesOf(anchorId), convs: doneOf(anchorId) }
+    const e = {
+      anchorId,
+      start,
+      quote,
+      highlighted: opts.highlighted.has(anchorId),
+      color: normalizeColor(opts.highlighted.get(anchorId)),
+      notes: notesOf(anchorId),
+      convs: doneOf(anchorId),
+    }
     return e.highlighted || e.notes.length || e.convs.length ? e : null
   }
 
