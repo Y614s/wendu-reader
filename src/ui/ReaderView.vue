@@ -1043,7 +1043,9 @@ onBeforeUnmount(() => {
 }
 .content {
   flex: 1;
-  overflow: auto;
+  /* 宽表格、长公式在自己内部滚动，正文只上下滚，页面不会左右晃 */
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-block: 16px 120px;
 }
 .toc {

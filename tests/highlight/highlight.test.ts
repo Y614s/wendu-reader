@@ -50,6 +50,26 @@ describe('mark 回退', () => {
   })
 })
 
+describe('搜索高亮的 mark 回退', () => {
+  it('和划线用不同的 class，清除搜索不动划线', () => {
+    const root = mount(MD)
+    const text = TextMap.build(root).text
+    const hl: PaintItem = { anchorId: 'a', start: text.indexOf('自平衡'), end: text.indexOf('自平衡') + 3, kind: 'highlight' }
+    const search: PaintItem = { anchorId: '', start: text.indexOf('二叉'), end: text.indexOf('二叉') + 2, kind: 'search' }
+    const current: PaintItem = { anchorId: '', start: text.indexOf('第二段'), end: text.indexOf('第二段') + 3, kind: 'searchCurrent' }
+
+    paint(root, [hl, search, current], 'mark')
+    expect(root.querySelector('mark.wendu-search')!.textContent).toBe('二叉')
+    expect(root.querySelector('mark.wendu-search-cur')!.textContent).toBe('第二段')
+
+    const map = paint(root, [hl], 'mark')
+    expect(root.querySelector('mark.wendu-search')).toBeNull()
+    expect(root.querySelector('mark.wendu-search-cur')).toBeNull()
+    expect(root.querySelector('mark.wendu-hl')!.textContent).toBe('自平衡')
+    expect(map.text).toBe(text)
+  })
+})
+
 describe('hitTest', () => {
   it('返回包含该位置的所有锚点', () => {
     const items: PaintItem[] = [
