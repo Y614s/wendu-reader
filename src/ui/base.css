@@ -18,6 +18,8 @@
   --hl-bg: rgba(255, 212, 0, 0.45);
   --ask-line: #0969da;
   --flash-bg: rgba(9, 105, 218, 0.25);
+  --search-bg: rgba(46, 160, 67, 0.3);
+  --search-cur-bg: #ffa657;
   /* 底部工具栏和提示 */
   --bar-bg: #24292f;
   --bar-fg: #ffffff;
@@ -26,6 +28,30 @@
   font-family: system-ui, -apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
   color: var(--fg);
   background: var(--bg);
+}
+
+:root[data-theme='sepia'] {
+  --bg: #f6efdf;
+  --fg: #3b3024;
+  --muted: #7a6a55;
+  --border: #dccfb4;
+  --accent: #8a5a1f;
+  --surface: #efe5cf;
+  --ok: #4f7a28;
+  --warn: #9a6200;
+  --danger: #b3381f;
+  --panel-bg: #efe5cf;
+  --panel-head: #e5d8bb;
+  --panel-border: #cdbb95;
+  --panel-title: #5c3d14;
+  --hl-bg: rgba(226, 170, 40, 0.4);
+  --ask-line: #8a5a1f;
+  --flash-bg: rgba(138, 90, 31, 0.28);
+  --search-bg: rgba(74, 130, 60, 0.32);
+  --search-cur-bg: #f0a040;
+  --bar-bg: #4a3a28;
+  --bar-fg: #fbf5e6;
+  --bar-muted: #cdbb95;
 }
 
 :root[data-theme='dark'] {
@@ -45,6 +71,8 @@
   --hl-bg: rgba(187, 128, 9, 0.45);
   --ask-line: #4493f8;
   --flash-bg: rgba(68, 147, 248, 0.35);
+  --search-bg: rgba(63, 185, 80, 0.3);
+  --search-cur-bg: #ffa657;
   --bar-bg: #2d333b;
   --bar-fg: #e6edf3;
   --bar-muted: #8b949e;
@@ -127,6 +155,13 @@ body,
   font-size: 18px;
   line-height: 1.8;
   word-break: break-word;
+}
+
+/* 正文的字号、行距和宽度由「排版」设置决定（src/app/prefs.ts），AI 回答不受影响 */
+.md.content {
+  font-size: var(--reader-font-size, 18px);
+  line-height: var(--reader-line-height, 1.8);
+  padding-inline: max(32px, calc((100% - var(--reader-width, 860px)) / 2));
 }
 
 .md h1,
@@ -298,6 +333,16 @@ body,
   background-color: var(--flash-bg);
 }
 
+/* 文内搜索 */
+::highlight(wendu-search) {
+  background-color: var(--search-bg);
+}
+
+::highlight(wendu-search-cur) {
+  background-color: var(--search-cur-bg);
+  color: #000;
+}
+
 /* 不支持时回退为 <mark> 包裹 */
 mark.wendu-hl,
 .katex.wendu-hl {
@@ -314,6 +359,18 @@ mark.wendu-ask {
 
 .katex.wendu-ask {
   border-bottom: 2px dashed var(--ask-line);
+}
+
+mark.wendu-search,
+.katex.wendu-search {
+  background-color: var(--search-bg);
+  color: inherit;
+}
+
+mark.wendu-search-cur,
+.katex.wendu-search-cur {
+  background-color: var(--search-cur-bg);
+  color: #000;
 }
 
 mark.wendu-flash,

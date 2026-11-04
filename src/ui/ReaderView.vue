@@ -12,6 +12,7 @@ import { readerState } from '../reader/state'
 import { collectHeadings, headingAt, sectionStarts, type Heading } from '../reader/outline'
 import { clampPosition, progressOf, scrollToPosition, topVisiblePosition } from '../reader/position'
 import { buildNoteGroups } from '../reader/notes'
+import { findMatches, firstMatchFrom, stepMatch, type SearchMatch } from '../reader/search'
 import type { TextMap } from '../textmap'
 import { hitTest, paint, positionFromPoint, supportsCustomHighlight, type PaintItem } from '../highlight'
 import {
@@ -40,6 +41,7 @@ import { exportOriginal } from '../export/original'
 import AskPanel from './AskPanel.vue'
 import NotesPanel from './NotesPanel.vue'
 import NoteEditor from './NoteEditor.vue'
+import TypographySettings from './TypographySettings.vue'
 
 const props = defineProps<{ active: boolean }>()
 
@@ -61,6 +63,12 @@ const tapped = ref<{ highlightIds: string[]; anchorId: string; convAnchorId: str
 const editor = ref<{ anchorId: string; quote: string; note: NoteRecord | null } | null>(null)
 const tocOpen = ref(false)
 const exportMenu = ref(false)
+const typoMenu = ref(false)
+const searchOpen = ref(false)
+const searchQuery = ref('')
+const searchMatches = shallowRef<SearchMatch[]>([])
+const searchIndex = ref(-1)
+const searchInput = ref<HTMLInputElement | null>(null)
 const progress = ref(0)
 const currentHeading = ref<Heading | null>(null)
 const toolbarBottom = ref(0)
@@ -99,6 +107,9 @@ function paintItems(): PaintItem[] {
     if (convAnchors.has(id)) items.push({ anchorId: id, start: l.start, end: l.end, kind: 'ask' })
     if (flashId.value === id) items.push({ anchorId: id, start: l.start, end: l.end, kind: 'flash' })
   }
+  searchMatches.value.forEach((m, i) => {
+    items.push({ anchorId: '', start: m.start, end: m.end, kind: i === searchIndex.value ? 'searchCurrent' : 'search' })
+  })
   return items
 }
 
@@ -162,6 +173,7 @@ function restorePosition() {
 async function loadDoc(id: string | null) {
   await savePositionNow()
   clearSelectionCache()
+  closeSearch()
   // 换文档时忘掉上一篇的提问面板，免得点「提问」回到另一篇的原文；上一篇没留下内容的锚点顺手清掉
   const leftAnchor = lastAsk.value?.anchorId ?? null
   lastAsk.value = null
@@ -205,9 +217,36 @@ async function savePositionNow() {
   readerState.lastSavedPosition = pos
 }
 
+/**
+ * 滚动停下时记住顶部的字符。字号、行距、宽度一变文字就重新换行，
+ * scrollTop 不变但内容已经跑了，这时滚回这个字符，段落不会跳走。
+ */
+let anchorPos: number | null = null
+let anchorTimer: ReturnType<typeof setTimeout> | undefined
+let lastWidth = 0
+
+function keepPositionAfterReflow() {
+  clearTimeout(anchorTimer)
+  if (anchorPos === null || !map || !contentEl.value || !props.active) return
+  scrollToPosition(map, contentEl.value, anchorPos)
+}
+
+function onResize() {
+  const w = contentEl.value?.clientWidth ?? 0
+  if (w === lastWidth) return
+  // 高度变化（键盘弹出）不会让文字重新换行，不用处理；宽度为 0 是页面隐藏
+  const reflowed = lastWidth > 0 && w > 0
+  lastWidth = w
+  if (reflowed) keepPositionAfterReflow()
+}
+
 function onScroll() {
   const el = contentEl.value
   if (!el) return
+  clearTimeout(anchorTimer)
+  anchorTimer = setTimeout(() => {
+    anchorPos = currentPosition()
+  }, 150)
   progress.value = progressOf(el.scrollTop, el.scrollHeight, el.clientHeight)
   const top = el.getBoundingClientRect().top + 24
   let cur: Heading | null = null
@@ -229,6 +268,53 @@ function jumpToHeading(h: Heading) {
 
 function onVisibility() {
   if (document.visibilityState === 'hidden') void savePositionNow()
+}
+
+// ---------- 文内搜索 ----------
+
+async function toggleSearch() {
+  if (searchOpen.value) {
+    closeSearch()
+    return
+  }
+  searchOpen.value = true
+  await nextTick()
+  searchInput.value?.focus()
+}
+
+function closeSearch() {
+  searchOpen.value = false
+  searchQuery.value = ''
+  if (searchMatches.value.length) {
+    searchMatches.value = []
+    searchIndex.value = -1
+    repaint()
+  }
+}
+
+/** 让当前这一处出现在屏幕上，已经看得见时不动 */
+function showCurrentMatch() {
+  const m = searchMatches.value[searchIndex.value]
+  const el = contentEl.value
+  if (!m || !map || !el) return
+  const rect = map.toRange(m.start, m.end).getBoundingClientRect()
+  const box = el.getBoundingClientRect()
+  if (rect.top < box.top + 8 || rect.bottom > box.bottom - 8) el.scrollTop += rect.top - box.top - el.clientHeight / 3
+}
+
+function runSearch() {
+  if (!map) return
+  searchMatches.value = findMatches(map.text, searchQuery.value)
+  searchIndex.value = firstMatchFrom(searchMatches.value, currentPosition() ?? 0)
+  repaint()
+  showCurrentMatch()
+}
+
+function moveSearch(step: 1 | -1) {
+  if (searchMatches.value.length === 0) return
+  searchIndex.value = stepMatch(searchIndex.value, searchMatches.value.length, step)
+  repaint()
+  showCurrentMatch()
 }
 
 // ---------- 工具栏 ----------
@@ -314,17 +400,21 @@ function onCancel() {
 function closeOverlays() {
   tocOpen.value = false
   exportMenu.value = false
+  typoMenu.value = false
 }
 
 /** 点到导出菜单以外的地方时收起菜单 */
 function onDocPointerDown(e: PointerEvent) {
-  if (exportMenu.value && !(e.target as Element).closest?.('.menu-wrap')) exportMenu.value = false
+  if (!(e.target as Element).closest?.('.menu-wrap')) {
+    exportMenu.value = false
+    typoMenu.value = false
+  }
 }
 
 function onContentClick(e: MouseEvent) {
   if (!map || !contentEl.value) return
   // 目录或菜单开着时，点正文只是把它们收起来
-  if (tocOpen.value || exportMenu.value) {
+  if (tocOpen.value || exportMenu.value || typoMenu.value) {
     closeOverlays()
     return
   }
@@ -332,7 +422,7 @@ function onContentClick(e: MouseEvent) {
   if (sel && !sel.isCollapsed) return
   if ((e.target as Element).closest('a')) return
   const pos = positionFromPoint(map, e.clientX, e.clientY)
-  const hits = pos === null ? [] : hitTest(paintItems(), pos).filter((h) => h.kind !== 'flash')
+  const hits = pos === null ? [] : hitTest(paintItems(), pos).filter((h) => h.kind === 'highlight' || h.kind === 'ask')
   if (hits.length) {
     const asks = hits.filter((h) => h.kind === 'ask').sort((a, b) => a.end - a.start - (b.end - b.start))
     const convAnchorId = asks[0]?.anchorId ?? null
@@ -607,6 +697,11 @@ watch(
 )
 
 watch(
+  () => [prefs.fontSize, prefs.lineHeight, prefs.pageWidth],
+  () => requestAnimationFrame(keepPositionAfterReflow),
+)
+
+watch(
   () => props.active,
   (on) => {
     if (on) restorePosition()
@@ -624,6 +719,9 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pagehide', onVisibility)
   document.addEventListener('pointerdown', onDocPointerDown)
+  const resizer = new ResizeObserver(onResize)
+  if (contentEl.value) resizer.observe(contentEl.value)
+  cleanups.push(() => resizer.disconnect())
   cleanups.push(() => document.removeEventListener('pointerdown', onDocPointerDown))
   cleanups.push(() => {
     window.visualViewport?.removeEventListener('resize', onViewportChange)
@@ -663,8 +761,13 @@ onBeforeUnmount(() => {
       <div class="doc-bar">
         <button :disabled="!doc || !toc.length" @click="tocOpen = !tocOpen">目录</button>
         <span class="doc-title">{{ doc?.title ?? '' }}<span v-if="currentHeading" class="cur-sec"> · {{ currentHeading.title }}</span></span>
+        <button v-if="doc" :class="{ on: searchOpen }" @click="toggleSearch">搜索</button>
         <button v-if="doc" @click="openWholeAsk">整篇提问</button>
         <button v-if="doc" @click="panel = { mode: 'notes', focusPending: false }">笔记</button>
+        <span v-if="doc" class="menu-wrap">
+          <button @click="typoMenu = !typoMenu">排版</button>
+          <span v-if="typoMenu" class="menu typo-menu"><TypographySettings /></span>
+        </span>
         <span v-if="doc" class="menu-wrap">
           <button @click="exportMenu = !exportMenu">导出</button>
           <span v-if="exportMenu" class="menu">
@@ -675,6 +778,21 @@ onBeforeUnmount(() => {
         <button v-if="pendingCount" class="pending" @click="panel = { mode: 'notes', focusPending: true }">待补充 {{ pendingCount }}</button>
       </div>
       <div class="progress"><div class="bar" :style="{ width: progress * 100 + '%' }" /></div>
+      <div v-if="searchOpen" class="search-bar">
+        <input
+          ref="searchInput"
+          v-model="searchQuery"
+          type="search"
+          placeholder="在本文中搜索"
+          enterkeyhint="search"
+          @input="runSearch"
+          @keydown.enter.prevent="moveSearch($event.shiftKey ? -1 : 1)"
+        />
+        <span class="search-count">{{ searchMatches.length ? `第 ${searchIndex + 1} / ${searchMatches.length} 处` : searchQuery.trim() ? '没有找到' : '' }}</span>
+        <button :disabled="!searchMatches.length" @click="moveSearch(-1)">上一个</button>
+        <button :disabled="!searchMatches.length" @click="moveSearch(1)">下一个</button>
+        <button @click="closeSearch">关闭</button>
+      </div>
 
       <div v-if="!doc && appState.ready" class="empty">
         <p>还没有打开文档。</p>
@@ -804,8 +922,44 @@ onBeforeUnmount(() => {
   font-size: 15px;
   white-space: nowrap;
 }
-.doc-bar button:disabled {
+.doc-bar button:disabled,
+.search-bar button:disabled {
   opacity: 0.4;
+}
+.doc-bar button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.search-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.search-bar input {
+  flex: 1;
+  min-width: 80px;
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.search-bar button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.search-count {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
 }
 .menu-wrap {
   position: relative;
@@ -831,6 +985,10 @@ onBeforeUnmount(() => {
   gap: 2px;
   border: none;
   text-align: left;
+}
+.typo-menu {
+  width: 300px;
+  padding: 0 14px;
 }
 .menu small {
   color: var(--muted);
@@ -867,7 +1025,7 @@ onBeforeUnmount(() => {
 .content {
   flex: 1;
   overflow: auto;
-  padding: 16px 32px 120px;
+  padding-block: 16px 120px;
 }
 .toc {
   position: absolute;

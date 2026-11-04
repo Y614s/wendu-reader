@@ -1,19 +1,25 @@
 import { ref } from 'vue'
 import { getSetting, setSetting } from '../db'
 
-// 日间 / 夜间 / 跟随系统。结果写到 <html data-theme>，颜色全由 base.css 里的变量决定。
+// 日间 / 米黄 / 夜间 / 跟随系统。结果写到 <html data-theme>，颜色全由 base.css 里的变量决定。
 
-export type ThemeSetting = 'light' | 'dark' | 'system'
+export type ThemeSetting = 'light' | 'sepia' | 'dark' | 'system'
+export type ResolvedTheme = 'light' | 'sepia' | 'dark'
+
+const THEME_COLOR: Record<ResolvedTheme, string> = { light: '#ffffff', sepia: '#f6efdf', dark: '#0d1117' }
 
 const KEY = 'ui.theme'
 const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null
 
 export const themeSetting = ref<ThemeSetting>('system')
+/** 实际生效的主题；Mermaid 等需要知道颜色的地方用它 */
+export const resolvedTheme = ref<ResolvedTheme>('light')
 
 function apply() {
-  const dark = themeSetting.value === 'dark' || (themeSetting.value === 'system' && media?.matches === true)
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0d1117' : '#ffffff')
+  const t: ResolvedTheme = themeSetting.value === 'system' ? (media?.matches ? 'dark' : 'light') : themeSetting.value
+  resolvedTheme.value = t
+  document.documentElement.dataset.theme = t
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[t])
 }
 
 export async function initTheme(): Promise<void> {

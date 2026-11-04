@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import ProviderSettings from './ProviderSettings.vue'
-import { setTheme, themeSetting, type ThemeSetting } from '../app/theme'
+import TypographySettings from './TypographySettings.vue'
 import { prefs, setContextBudget, setEdgeTap } from '../app/prefs'
 import { showToast } from '../app/store'
 import { db, getSetting, setSetting } from '../db'
@@ -9,12 +9,6 @@ import { BackupError, clearAllData, createBackup, parseBackup, restoreBackup, RE
 import { getProviderSettings, PROVIDER_PRESETS } from '../ai/providers'
 import { saveTextFile } from '../platform/files'
 import { formatDate } from '../export/markdown'
-
-const themes: { value: ThemeSetting; label: string }[] = [
-  { value: 'system', label: '跟随系统' },
-  { value: 'light', label: '日间' },
-  { value: 'dark', label: '夜间' },
-]
 
 const budgetInput = ref(prefs.contextBudget)
 const lastExportAt = ref<number | null>(null)
@@ -130,12 +124,7 @@ onMounted(async () => {
 
     <section>
       <h2>阅读</h2>
-      <div class="field">
-        <span class="field-label">主题</span>
-        <div class="seg">
-          <button v-for="t in themes" :key="t.value" :class="{ on: themeSetting === t.value }" @click="setTheme(t.value)">{{ t.label }}</button>
-        </div>
-      </div>
+      <TypographySettings />
       <label class="check">
         <input type="checkbox" :checked="prefs.edgeTap" @change="setEdgeTap(($event.target as HTMLInputElement).checked)" />
         点屏幕上下边缘翻一屏
@@ -202,15 +191,6 @@ section + section {
 }
 .field-label {
   font-weight: 500;
-}
-.seg {
-  display: flex;
-  gap: 6px;
-}
-.seg button.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
 }
 .row {
   display: flex;

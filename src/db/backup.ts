@@ -36,7 +36,10 @@ const isStringOrNull = (v: unknown) => v === null || typeof v === 'string'
 const BACKUP_SETTINGS = new Map<string, (v: unknown) => boolean>([
   ['reader.currentDocId', isStringOrNull],
   ['reader.sampleDocId', isStringOrNull],
-  ['ui.theme', (v) => v === 'light' || v === 'dark' || v === 'system'],
+  ['ui.theme', (v) => v === 'light' || v === 'sepia' || v === 'dark' || v === 'system'],
+  ['ui.fontSize', (v) => typeof v === 'number' && v >= 15 && v <= 24],
+  ['ui.lineHeight', (v) => v === 1.6 || v === 1.8 || v === 2],
+  ['ui.pageWidth', (v) => v === 'narrow' || v === 'normal' || v === 'wide'],
   ['ui.edgeTap', (v) => typeof v === 'boolean'],
   ['ai.contextBudget', (v) => typeof v === 'number' && Number.isFinite(v) && v > 0],
   ['backup.since', isNumberOrNull],

@@ -3,7 +3,7 @@ import { TextMap } from '../textmap'
 // 划线显示：优先用 CSS Custom Highlight API，不改动 DOM；不支持时回退为 <mark> 包裹。
 // 点击命中：caretRangeFromPoint → 映射层位置 → 与锚点区间比较，不遍历 Range 调 getClientRects()。
 
-export type PaintKind = 'highlight' | 'ask' | 'flash'
+export type PaintKind = 'highlight' | 'ask' | 'flash' | 'search' | 'searchCurrent'
 
 export interface PaintItem {
   anchorId: string
@@ -12,7 +12,16 @@ export interface PaintItem {
   kind: PaintKind
 }
 
-const NAMES: Record<PaintKind, string> = { highlight: 'wendu-hl', ask: 'wendu-ask', flash: 'wendu-flash' }
+const NAMES: Record<PaintKind, string> = {
+  highlight: 'wendu-hl',
+  ask: 'wendu-ask',
+  flash: 'wendu-flash',
+  search: 'wendu-search',
+  searchCurrent: 'wendu-search-cur',
+}
+
+// 重叠时后面的盖住前面的：搜索结果要看得见，当前这一处最醒目
+const PRIORITY: Partial<Record<PaintKind, number>> = { flash: 1, search: 2, searchCurrent: 3 }
 const MARK_ATTR = 'data-wendu-mark'
 
 export function supportsCustomHighlight(): boolean {
@@ -29,7 +38,9 @@ export function paint(root: Element, items: PaintItem[], mode: PaintMode = suppo
     const map = TextMap.build(root)
     for (const kind of Object.keys(NAMES) as PaintKind[]) {
       const ranges = items.filter((i) => i.kind === kind && i.end > i.start).map((i) => map.toRange(i.start, i.end))
-      CSS.highlights.set(NAMES[kind], new Highlight(...ranges))
+      const hl = new Highlight(...ranges)
+      hl.priority = PRIORITY[kind] ?? 0
+      CSS.highlights.set(NAMES[kind], hl)
     }
     return map
   }
