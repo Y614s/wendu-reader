@@ -18,6 +18,7 @@ function apply() {
 
 export function initLayout(): void {
   apply()
-  window.addEventListener('resize', apply)
+  // 比 resize 事件可靠：只要窗口尺寸变了就会触发
+  new ResizeObserver(apply).observe(document.documentElement)
   screen.orientation?.addEventListener('change', apply)
 }
