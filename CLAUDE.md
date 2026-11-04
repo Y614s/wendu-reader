@@ -33,7 +33,7 @@
 | 网页版离线 | vite-plugin-pwa |
 | CI | GitHub Actions：测试、构建签名 APK、发布 Release |
 
-Mermaid 第二版才加入，在那之前 mermaid 代码块按普通代码块显示。新增依赖前先想清楚能否不加；不引入任何远程加载的脚本或字体，所有资源打包进应用。
+Mermaid 用动态 import 按需加载，只有文档里有 mermaid 代码块时才加载。新增依赖前先想清楚能否不加；不引入任何远程加载的脚本或字体，所有资源打包进应用。
 
 ## 目录结构
 
@@ -62,12 +62,12 @@ docs/setup.md   自己构建和发布的步骤
 
 Dexie 表：
 
-- `documents`：`id`（UUID）、`title`、`source`（md 原文）、`hash`、`importedAt`、`lastReadAt`、`readingPosition`
+- `documents`：`id`（UUID）、`title`、`source`（md 原文）、`hash`、`importedAt`、`lastReadAt`、`readingPosition`、`progress`（可选，0～1）
 - `anchors`：`id`、`docId`、`docHash`、`quote`、`prefix`、`suffix`、`start`、`end`（`start`/`end` 是映射层里的字符位置）
 - `highlights`：`id`、`anchorId`、`color`（第一版只用一种颜色，但字段必须有）、`createdAt`
-- `notes`：`id`、`anchorId`、`text`、`createdAt`、`updatedAt`
+- `notes`：`id`、`anchorId`、`source`（可选，`annotation` | `ai`）、`text`、`createdAt`、`updatedAt`
 - `conversations`：`id`、`docId`、`anchorId`（整篇提问时为空）、`kind`（`sidebar` | `external`）、`status`（`done` | `pending`，pending 即待补充记录）、`messages`、`provider`、`model`、`createdAt`
-- `settings`：键值对。API Key 也存这里，但**永远不进备份、不进日志**。
+- `settings`：键值对。API Key 也存这里，但**永远不进备份、不进日志**。能进出备份的设置走白名单（`src/db/backup.ts`），新增设置默认留在本机；AI 接口配置不进备份。
 
 规则：
 - schema 变更只能新增版本号并写迁移，不能修改已发布的版本。已经有人在用，迁移出错会丢别人的数据。
@@ -77,11 +77,11 @@ Dexie 表：
 ## 文本映射层（最关键，必须有单元测试）
 
 1. 遍历渲染后正文的文本节点，按文档顺序拼成规范化纯文本。
-2. 每个 `.katex` 元素整体只算 **1 个字符**（用 U+FFFC），不进入其内部，也不读 `.katex-mathml`。
+2. 每个 `.katex` 元素和 `.mermaid-block` 容器整体只算 **1 个字符**（用 U+FFFC），不进入其内部，也不读 `.katex-mathml`。
 3. 块级元素之间补一个 `\n`；不做其他空白压缩，保证与 DOM 偏移可逆。
 4. 同时建立"纯文本下标 → (DOM 节点, 偏移)"的映射，以及反向查询。
 5. 选区边界落在公式内部时，扩展到整个 `.katex` 外层元素。
-6. 定位、复制、AI 上下文、导出共用这一层；需要文本时，再把 U+FFFC 换回该公式的原始 TeX（从 KaTeX 渲染时保留的源码属性中取）。
+6. 定位、复制、AI 上下文、导出共用这一层；需要文本时，再把 U+FFFC 换回公式的原始 TeX 或 mermaid 代码块（从渲染时保留的源码属性中取）。
 
 锚点：存 `quote` + 前后各 32 个字符 + `start`/`end`。重新定位顺序：先校验位置处文本是否等于 `quote`；不等则在全文搜索 `quote`，用 prefix/suffix 相似度和与原位置的距离选最佳；都失败则标记为孤立，不删数据。
 
