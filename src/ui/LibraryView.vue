@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
-import type { DocumentRecord } from '../db'
+import { db, type DocumentRecord } from '../db'
+import { applyMigration, planMigration, type MigrationPlan } from '../anchor/migrate'
 import { listDocuments, loadDocStats, type DocStats } from '../db/documents'
 import { parseTags } from '../reader/markdown'
 import { appState, deleteDocument, importText, openDocument, showToast } from '../app/store'
 import { exportOriginal } from '../export/original'
-import { isTooLarge } from '../platform/incoming'
+import { isLikelyMarkdown, isTooLarge } from '../platform/incoming'
 
 // 书架：标题、进度、划线和问答数、标签；点开即读；可以按标签筛选、导出和删除。
 
@@ -77,6 +78,70 @@ async function remove(d: DocumentRecord) {
   showToast(`已删除「${d.title}」`)
 }
 
+// ---------- 更新为新版本（划线迁移） ----------
+
+const updating = shallowRef<DocumentRecord | null>(null)
+const updateText = ref('')
+const updatePlan = shallowRef<MigrationPlan | null>(null)
+const updateInput = ref<HTMLInputElement | null>(null)
+
+function startUpdate(d: DocumentRecord) {
+  updating.value = d
+  updateText.value = ''
+  updatePlan.value = null
+}
+
+function cancelUpdate() {
+  updating.value = null
+  updateText.value = ''
+  updatePlan.value = null
+}
+
+/** 只计算不写库，给出「能找回几处」 */
+async function previewUpdate(text: string, name: string) {
+  const d = updating.value
+  if (!d) return
+  if (isTooLarge(text.length)) {
+    showToast('文档太大了，单篇不能超过 5 MB', 4000)
+    return
+  }
+  if (!isLikelyMarkdown(name, text)) {
+    showToast('这看起来不是 Markdown，没有更新', 4000)
+    return
+  }
+  const plan = await planMigration(db, d, text)
+  if (plan.unchanged) {
+    showToast('新内容和现在的一样，不用更新')
+    return
+  }
+  updatePlan.value = plan
+}
+
+async function onUpdateFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (isTooLarge(file.size)) showToast(`「${file.name}」太大了，单篇不能超过 5 MB`, 4000)
+  else await previewUpdate(await file.text(), file.name)
+}
+
+async function confirmUpdate() {
+  const d = updating.value
+  const plan = updatePlan.value
+  if (!d || !plan) return
+  try {
+    await applyMigration(db, d, plan)
+  } catch (e) {
+    showToast(`更新失败，原有数据没有改动：${String(e)}`, 5000)
+    return
+  }
+  showToast(plan.lost.length ? `已更新，${plan.lost.length} 处划线找不到原文，保留在「原文已找不到」` : '已更新，划线都在', 4000)
+  cancelUpdate()
+  appState.docsVersion++
+  if (d.id === appState.currentDocId) appState.sourceVersion++
+}
+
 /** 书架上导出的是原文；笔记在阅读页的「导出」里 */
 async function exportDoc(d: DocumentRecord) {
   try {
@@ -115,6 +180,32 @@ onMounted(refresh)
       <button v-for="t in allTags" :key="t" :class="{ on: activeTag === t }" @click="activeTag = t">{{ t }}</button>
     </div>
 
+    <div v-if="updating" class="update">
+      <strong>把「{{ updating.title }}」更新为新版本</strong>
+      <template v-if="!updatePlan">
+        <p class="hint">划线、批注和对话会迁移到新内容上。这不是导入新文档，书架上还是这一篇。</p>
+        <div class="paste-row">
+          <button class="primary" @click="updateInput?.click()">选择 md 文件</button>
+          <button @click="cancelUpdate">取消</button>
+        </div>
+        <input ref="updateInput" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden @change="onUpdateFile" />
+        <div class="paste-row">
+          <span class="hint">或者粘贴新内容：</span>
+          <button :disabled="!updateText.trim()" @click="previewUpdate(updateText, 'pasted.md')">检查</button>
+        </div>
+        <textarea v-model="updateText" rows="5" placeholder="把新版本的 Markdown 粘贴到这里" />
+      </template>
+      <template v-else>
+        <p class="result">能找回 <strong>{{ updatePlan.moved.length }}</strong> 处，<strong :class="{ warn: updatePlan.lost.length }">{{ updatePlan.lost.length }}</strong> 处找不到。</p>
+        <p v-if="updatePlan.lost.length" class="hint">找不到的划线不会删除，保留在笔记的「原文已找不到」里。</p>
+        <p class="hint">旧版原文不保留。需要的话，先点「取消」，再导出这篇的原文或备份。</p>
+        <div class="paste-row">
+          <button class="primary" @click="confirmUpdate">确认更新</button>
+          <button @click="cancelUpdate">取消</button>
+        </div>
+      </template>
+    </div>
+
     <ul class="list">
       <li v-for="d in shown" :key="d.id" :class="{ current: d.id === appState.currentDocId }">
         <button class="open" @click="openDocument(d.id)">
@@ -128,6 +219,7 @@ onMounted(refresh)
             <span v-for="t in tagsOf.get(d.id)" :key="t" class="tag">{{ t }}</span>
           </span>
         </button>
+        <button class="side-btn" @click="startUpdate(d)">更新</button>
         <button class="side-btn" @click="exportDoc(d)">导出</button>
         <button class="side-btn del" @click="remove(d)">删除</button>
       </li>
@@ -226,6 +318,33 @@ button:disabled {
 .meta {
   font-size: 13px;
   color: var(--muted);
+}
+.update {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+.update textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.update p {
+  margin: 0;
+}
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+.warn {
+  color: var(--warn);
 }
 .tag-bar {
   display: flex;
