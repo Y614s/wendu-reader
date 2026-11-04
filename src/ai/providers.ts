@@ -99,7 +99,27 @@ export async function deleteApiKey(id: string): Promise<void> {
 
 /** 填了地址、模型和 Key 的服务商 */
 export function isConfigured(cfg: ProviderConfig): boolean {
-  return Boolean(cfg.baseURL && !cfg.baseURL.includes('{') && cfg.model && cfg.apiKey)
+  return Boolean(baseURLProblem(cfg.baseURL) === null && cfg.model && cfg.apiKey)
+}
+
+/**
+ * 检查接口地址，有问题时返回提示。Key 会放在请求头里发给这个地址，所以：
+ * 只允许 https（本机调试可以用 http://localhost），不允许地址里带用户名和密码。
+ */
+export function baseURLProblem(baseURL: string): string | null {
+  const value = baseURL.trim()
+  if (!value) return '接口地址没填好，请到设置页检查。'
+  if (value.includes('{')) return '接口地址里还有 { } 占位符，请到设置页替换成你自己的值。'
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return '接口地址格式不对，应该以 https:// 开头。'
+  }
+  if (url.username || url.password) return '接口地址里不能带用户名和密码。'
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+  if (url.protocol === 'https:' || (url.protocol === 'http:' && isLocal)) return null
+  return '接口地址必须以 https:// 开头，否则 API Key 会被明文传输。'
 }
 
 /** `{接口地址}/chat/completions`，处理好末尾斜杠 */

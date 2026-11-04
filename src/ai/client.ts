@@ -1,5 +1,5 @@
 import { SSEParser, interpretChatEvent } from './sse'
-import { chatCompletionsURL, type ProviderConfig } from './providers'
+import { baseURLProblem, chatCompletionsURL, type ProviderConfig } from './providers'
 
 // Chat Completions 流式客户端：WebView 自带的 fetch + ReadableStream，不用 Capacitor 原生 HTTP。
 // 任何地方都不打印 API Key 或完整请求头。
@@ -66,7 +66,8 @@ async function classifyFetchFailure(url: string): Promise<ChatError> {
 
 /** 配置不全时返回提示，发请求前先检查 */
 export function configProblem(cfg: ProviderConfig): string | null {
-  if (!cfg.baseURL || cfg.baseURL.includes('{')) return '接口地址没填好，请到设置页检查。'
+  const urlProblem = baseURLProblem(cfg.baseURL)
+  if (urlProblem) return urlProblem
   if (!cfg.model) return '还没填模型名，请到设置页填写。'
   if (!cfg.apiKey) return '还没填 API Key，请到设置页填写。'
   return null

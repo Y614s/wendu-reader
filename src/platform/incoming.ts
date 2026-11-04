@@ -19,6 +19,13 @@ interface IncomingFilePlugin {
 
 const Incoming = registerPlugin<IncomingFilePlugin>('IncomingFile')
 
+/** 单篇文档上限，和原生侧 IncomingFilePlugin 一致。渲染是同步的，太大的文档会卡死页面 */
+export const MAX_IMPORT_BYTES = 5 * 1024 * 1024
+
+export function isTooLarge(size: number): boolean {
+  return size > MAX_IMPORT_BYTES
+}
+
 const MD_EXT = /\.(md|markdown|mdown|mkd|mdx)$/i
 const TEXT_EXT = /\.(txt|text)$/i
 

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   PROVIDER_PRESETS,
+  baseURLProblem,
   deleteApiKey,
   getProviderSettings,
   getSelectedProviderId,
@@ -20,6 +21,7 @@ const saved = ref('')
 // 正在输入的新 Key，只在「更改」时存在，保存或取消后立即清空
 const newKey = ref('')
 const editingKey = ref(false)
+const urlError = ref('')
 
 const preset = computed(() => presetOf(providerId.value))
 
@@ -44,6 +46,15 @@ function flash(text: string) {
 
 async function save() {
   if (!form.value) return
+  urlError.value = ''
+  // 占位符还没替换时允许先保存，提问时会再提示；其他地址问题不让保存
+  if (!form.value.baseURL.includes('{')) {
+    const problem = form.value.baseURL.trim() ? baseURLProblem(form.value.baseURL) : null
+    if (problem) {
+      urlError.value = problem
+      return
+    }
+  }
   await saveProviderSettings(form.value)
   await setSelectedProviderId(form.value.providerId)
   if (editingKey.value && newKey.value.trim()) {
@@ -85,7 +96,7 @@ onMounted(async () => load(await getSelectedProviderId()))
 <template>
   <section>
     <h2>AI 接口</h2>
-    <p class="muted">只支持兼容 OpenAI Chat Completions 格式的接口。Key 只保存在本机，不会进入备份，只发给你在这里填写的接口地址。</p>
+    <p class="muted">只支持兼容 OpenAI Chat Completions 格式的接口。Key 只保存在本机（未加密），不会进入备份，只发给你在这里填写的接口地址。</p>
 
     <label>
       服务商
@@ -104,6 +115,7 @@ onMounted(async () => load(await getSelectedProviderId()))
         </span>
       </label>
       <p v-if="form.baseURL.includes('{')" class="warn">地址里还有 { } 占位符，请替换成你自己的值。</p>
+      <p v-if="urlError" class="error">{{ urlError }}</p>
 
       <label>
         模型名
@@ -208,6 +220,10 @@ button.link {
 }
 .small {
   font-size: 13px;
+}
+.error {
+  color: var(--danger);
+  font-size: 14px;
 }
 .warn {
   color: var(--warn);

@@ -9,7 +9,7 @@ import {
   loadCurrentDocument,
   setCurrentDocument,
 } from '../db/documents'
-import { isLikelyMarkdown, listenIncomingFiles, type IncomingFile } from '../platform/incoming'
+import { isLikelyMarkdown, isTooLarge, listenIncomingFiles, type IncomingFile } from '../platform/incoming'
 
 // 全局状态：当前文档、书架列表、全局提示。书架、阅读页和从其他 App 传进来的文件都走这里。
 
@@ -43,6 +43,10 @@ export async function openDocument(id: string): Promise<void> {
 
 /** 导入一段 md 文本；不像 md 时提示并返回 null */
 export async function importText(text: string, name: string, open = true): Promise<DocumentRecord | null> {
+  if (isTooLarge(text.length)) {
+    showToast('文档太大了，单篇不能超过 5 MB', 4000)
+    return null
+  }
   if (!isLikelyMarkdown(name, text)) {
     showToast(`「${name || '收到的内容'}」看起来不是 Markdown，没有导入`, 4000)
     return null

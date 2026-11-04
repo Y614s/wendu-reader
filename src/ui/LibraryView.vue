@@ -4,6 +4,7 @@ import type { DocumentRecord } from '../db'
 import { listDocuments } from '../db/documents'
 import { appState, deleteDocument, importText, openDocument, showToast } from '../app/store'
 import { exportOriginal } from '../export/original'
+import { isTooLarge } from '../platform/incoming'
 
 // 最简书架：标题、导入时间、最近阅读；点开即读；可删除。完整书架（进度、标签）在第二版。
 
@@ -26,7 +27,11 @@ async function onFilesPicked(e: Event) {
   const files = Array.from(input.files ?? [])
   input.value = ''
   // 多选时只导入不跳转，留在书架上看结果
-  for (const f of files) await importText(await f.text(), f.name, files.length === 1)
+  for (const f of files) {
+    // 先看文件大小，太大的不读进内存
+    if (isTooLarge(f.size)) showToast(`「${f.name}」太大了，单篇不能超过 5 MB`, 4000)
+    else await importText(await f.text(), f.name, files.length === 1)
+  }
 }
 
 async function importPasted() {
