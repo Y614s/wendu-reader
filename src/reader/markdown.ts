@@ -36,6 +36,11 @@ export function parseDoc(source: string, fallbackTitle: string): ParsedDoc {
   return { title: meta.title || h1?.[1] || fallbackTitle, body }
 }
 
+/** 允许打开的链接：网页、邮件、页内跳转 */
+const SAFE_LINK = /^(https?:|mailto:|#)/i
+/** 会发起网络请求的地址，含 // 开头的协议相对地址 */
+const REMOTE_URL = /^(https?:)?\/\//i
+
 export function createMarkdown(highlight?: CodeHighlighter): MarkdownItInstance {
   const md = new MarkdownIt({
     html: false,
@@ -45,15 +50,32 @@ export function createMarkdown(highlight?: CodeHighlighter): MarkdownItInstance 
   })
   md.use(mathPlugin)
   md.use(calloutPlugin)
-  // 外链在 App 里会把 WebView 导走，统一新窗口打开
+  // 文档和 AI 回答都走这里，内容都不可信：
+  // 其他 scheme（weixin:、tel: 等）在 App 里会直接调起别的 App，去掉 href 只留文字
   const defaultLink = md.renderer.rules.link_open ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts))
   md.renderer.rules.link_open = (tokens, idx, opts, env, self) => {
-    const href = String(tokens[idx].attrGet('href') ?? '')
-    if (/^https?:/i.test(href)) {
-      tokens[idx].attrSet('target', '_blank')
-      tokens[idx].attrSet('rel', 'noopener noreferrer')
+    const token = tokens[idx]
+    const href = String(token.attrGet('href') ?? '')
+    if (!SAFE_LINK.test(href)) {
+      token.attrs = (token.attrs ?? []).filter(([name]) => name !== 'href')
+      token.attrSet('title', '不支持打开这种链接')
+    } else if (/^https?:/i.test(href)) {
+      // 外链在 App 里会把 WebView 导走，统一新窗口打开
+      token.attrSet('target', '_blank')
+      token.attrSet('rel', 'noopener noreferrer')
     }
     return defaultLink(tokens, idx, opts, env, self)
+  }
+  // 外部图片不自动加载：打开文档就发请求，图片服务器能看到 IP 和打开时间。
+  // 占位的文字由 CSS 显示，不产生文本节点，文本映射层和锚点位置不受影响。
+  const defaultImage = md.renderer.rules.image ?? ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts))
+  md.renderer.rules.image = (tokens, idx, opts, env, self) => {
+    const token = tokens[idx]
+    const src = String(token.attrGet('src') ?? '')
+    if (!REMOTE_URL.test(src)) return defaultImage(tokens, idx, opts, env, self)
+    const alt = self.renderInlineAsText(token.children ?? [], opts, env)
+    const esc = md.utils.escapeHtml
+    return `<span class="remote-image" role="button" tabindex="0" data-src="${esc(src)}" data-alt="${esc(alt)}"></span>`
   }
   return md
 }
